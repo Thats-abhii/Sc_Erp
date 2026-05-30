@@ -4209,6 +4209,138 @@ const NAV=[
   {id:"reports",    icon:"", label:"Reports"},
 ];
 
+function SmartAssistant({ leads, setLeads, orders, followups, setFollowups, salesmen, expenses, setExpenses, smartInventory, role, canWrite }) {
+  const [open,setOpen]=useState(false);
+  const [input,setInput]=useState("");
+  const [messages,setMessages]=useState([
+    {from:"bot",text:"Ask me about leads, missed follow-ups, production, inventory, expenses, or say: add lead name Rahul mobile 9876543210 product Mesh location Bengaluru salesman Amit."}
+  ]);
+  const addBot=text=>setMessages(ms=>[...ms,{from:"bot",text}]);
+  const addUser=text=>setMessages(ms=>[...ms,{from:"user",text}]);
+  const overdue=()=>unifiedFollowups(leads,followups,salesmen).filter(f=>(f.nextDate||f.date||todayStr())<todayStr()&&f.outcome!=="Completed");
+  const findSalesman=text=>{
+    const lower=text.toLowerCase();
+    return salesmen.find(s=>lower.includes(String(s.name||"").toLowerCase())||lower.includes(String(s.loginId||"").toLowerCase()));
+  };
+  const findLead=text=>{
+    const lower=text.toLowerCase();
+    const mobile=normalizeMobile(text).slice(-10);
+    return leads.find(l=>
+      String(l.id||"").toLowerCase()===lower.trim()||
+      (mobile&&normalizeMobile(l.mobile)===mobile)||
+      lower.includes(String(l.name||"").toLowerCase())
+    );
+  };
+  const extractAfter=(text,label)=>{
+    const match=new RegExp(`${label}\\s+([^,;]+?)(?=\\s+(name|mobile|phone|product|location|budget|salesman|source|notes|amount|reason|date|lead|type)\\b|$)`,"i").exec(text);
+    return match?.[1]?.trim()||"";
+  };
+  const parseDate=text=>{
+    const lower=text.toLowerCase();
+    if(lower.includes("tomorrow")){
+      const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().split("T")[0];
+    }
+    const exact=/\b(\d{4}-\d{2}-\d{2})\b/.exec(text)?.[1];
+    return exact||todayStr();
+  };
+  const addLeadFromChat=text=>{
+    if(!canWrite)return "Only Management can add or change ERP records from chatbot.";
+    const mobile=normalizeMobile(extractAfter(text,"mobile")||extractAfter(text,"phone")||text).slice(-10);
+    const name=extractAfter(text,"name")||text.replace(/add\s+lead|create\s+lead/ig,"").replace(/\bmobile\b.*$/i,"").trim();
+    const product=(/blind/i.test(text)?"Blinds":/mesh/i.test(text)?"Mesh":PRODUCTS[0]);
+    const location=extractAfter(text,"location");
+    const budget=Number((extractAfter(text,"budget")||"").replace(/\D/g,""))||"";
+    const source=extractAfter(text,"source")||"Other";
+    const salesman=findSalesman(text)||salesmen[0];
+    if(!name||name.length<2)return "Please include customer name. Example: add lead name Rahul mobile 9876543210 product Mesh";
+    const mobileError=validateMobile(mobile);
+    if(mobileError)return mobileError;
+    const duplicate=customerDuplicate({leads,orders,mobile});
+    if(duplicate)return duplicateMsg(duplicate);
+    const now=new Date().toISOString();
+    const id=`L${String(leads.length+1).padStart(3,"0")}`;
+    setLeads(ls=>[...ls,{id,name,mobile,email:"",alt:"",source,product,location,budget,salesman:salesman?.id||1,status:"New",priority:"Warm",notes:extractAfter(text,"notes"),created:todayStr(),updated:todayStr(),createdAt:now,updatedAt:now,assignedAt:now,createdBy:"Chatbot"}]);
+    return `Lead ${id} created for ${name}${salesman?.name?` and assigned to ${salesman.name}`:""}.`;
+  };
+  const addExpenseFromChat=text=>{
+    if(!canWrite)return "Only Management can add expenses from chatbot.";
+    const amount=Number((extractAfter(text,"amount")||text).replace(/,/g,"").match(/\d+(\.\d+)?/)?.[0]||0);
+    const category=EXPENSE_CATEGORIES.find(c=>text.toLowerCase().includes(c.toLowerCase()))||extractAfter(text,"category")||"Other";
+    const reason=extractAfter(text,"reason")||extractAfter(text,"notes")||text.replace(/add\s+expense|expense/ig,"").trim();
+    if(!amount)return "Please include expense amount. Example: add expense amount 1200 category Logistics reason delivery diesel";
+    setExpenses(es=>[{id:`EXP${Date.now()}`,date:parseDate(text),cat:category,name:category,amount,reason,desc:reason},...es]);
+    return `Expense saved: ${category} ${inr(amount)}.`;
+  };
+  const addFollowupFromChat=text=>{
+    if(!canWrite)return "Only Management can add follow-ups from chatbot.";
+    const lead=findLead(text);
+    if(!lead)return "Please mention lead name, lead ID, or mobile number. Example: add followup lead Rahul tomorrow call";
+    const type=/visit/i.test(text)?"Visit":/whatsapp/i.test(text)?"WhatsApp":/email/i.test(text)?"Email":"Call";
+    const date=parseDate(text);
+    setFollowups(fs=>[...fs.filter(f=>f.leadId!==lead.id||f.outcome==="Completed"),{id:`FU${Date.now()}`,leadId:lead.id,smId:lead.salesman||salesmen[0]?.id||1,date,time:"10:00",type,outcome:"Pending",action:extractAfter(text,"reason")||extractAfter(text,"notes")||`${type} follow-up`,next:date,notes:extractAfter(text,"notes"),createdBy:"Chatbot",createdAt:new Date().toISOString()}]);
+    return `Follow-up added for ${lead.name} on ${date}.`;
+  };
+  const answerQuery=text=>{
+    const lower=text.toLowerCase();
+    if(/add|create|save/.test(lower)&&/expense/.test(lower))return addExpenseFromChat(text);
+    if(/add|create|save/.test(lower)&&/follow/.test(lower))return addFollowupFromChat(text);
+    if(/add|create|save/.test(lower)&&/lead/.test(lower))return addLeadFromChat(text);
+    if(/miss|missed|overdue|pending follow/.test(lower)){
+      const list=overdue();
+      if(!list.length)return "No missed follow-ups right now.";
+      return `Missed follow-ups: ${list.length}\n`+list.slice(0,8).map(f=>`${f.leadName||leads.find(l=>l.id===f.leadId)?.name||"Lead"} - ${f.nextDate||f.date}`).join("\n");
+    }
+    if(/lead/.test(lower)){
+      const converted=leads.filter(l=>l.status==="Converted").length;
+      const fresh=leads.filter(l=>l.created===todayStr()).length;
+      return `Leads: ${leads.length}. New today: ${fresh}. Converted: ${converted}. Open: ${leads.filter(l=>!["Converted","Rejected","Lost"].includes(l.status)).length}.`;
+    }
+    if(/production|order/.test(lower)){
+      const prod=orders.filter(o=>["Approval Pending","In Production","Completed","Installed","Closed"].includes(o.status)||o.productionStage).length;
+      const pending=orders.filter(o=>o.status==="Approval Pending").length;
+      const active=orders.filter(o=>o.status==="In Production"||o.productionStage==="Cutting"||o.productionStage==="Assembling"||o.productionStage==="Quality Check").length;
+      return `Production orders: ${prod}. Approval pending: ${pending}. In production: ${active}. Completed: ${orders.filter(o=>o.status==="Completed"||o.productionStage==="Completed").length}.`;
+    }
+    if(/inventory|stock/.test(lower)){
+      const blinds=(smartInventory?.blindRolls||[]).length;
+      const mesh=(smartInventory?.meshComponents||[]).length;
+      const movements=(smartInventory?.movements||[]).slice(0,5).map(m=>m.text||m.orderId).filter(Boolean);
+      return `Inventory: ${blinds} blind items and ${mesh} mesh items. Recent activity: ${movements.length?movements.join("; "):"none"}.`;
+    }
+    if(/expense|spend|cost/.test(lower)){
+      const month=todayStr().slice(0,7);
+      const today=expenses.filter(e=>e.date===todayStr()).reduce((s,e)=>s+Number(e.amount||0),0);
+      const mtd=expenses.filter(e=>String(e.date||"").startsWith(month)).reduce((s,e)=>s+Number(e.amount||0),0);
+      return `Expenses today: ${inr(today)}. This month: ${inr(mtd)}. Total entries: ${expenses.length}.`;
+    }
+    return "I can help with: leads summary, missed follow-ups, production status, inventory, expenses, add lead, add expense, and add followup.";
+  };
+  const submit=e=>{
+    e.preventDefault();
+    const text=input.trim();
+    if(!text)return;
+    addUser(text);
+    setInput("");
+    setTimeout(()=>addBot(answerQuery(text)),80);
+  };
+  return <>
+    <button onClick={()=>setOpen(o=>!o)} style={{position:"fixed",right:24,bottom:24,zIndex:1500,border:0,borderRadius:999,background:T.blue,color:"#fff",padding:"13px 18px",boxShadow:"0 16px 40px rgba(15,23,42,.22)",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Smart Assistant</button>
+    {open&&<div style={{position:"fixed",right:24,bottom:82,zIndex:1500,width:"min(420px,calc(100vw - 32px))",height:"min(560px,calc(100vh - 120px))",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 24px 80px rgba(15,23,42,.24)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:14,borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:T.surf}}>
+        <div><div style={{fontWeight:900,color:T.text}}>SmartCovering Assistant</div><div style={{fontSize:11,color:T.muted}}>{canWrite?"Can check and add ERP records":"Check-only access"}</div></div>
+        <button onClick={()=>setOpen(false)} style={{border:0,background:T.cardHi,borderRadius:8,width:30,height:30,cursor:"pointer",color:T.muted}}>x</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:14,display:"grid",gap:10,alignContent:"start"}}>
+        {messages.map((m,i)=><div key={i} style={{justifySelf:m.from==="user"?"end":"start",maxWidth:"88%",whiteSpace:"pre-line",background:m.from==="user"?T.blue:T.cardHi,color:m.from==="user"?"#fff":T.text,border:`1px solid ${m.from==="user"?T.blue:T.border}`,borderRadius:10,padding:"9px 11px",fontSize:13,lineHeight:1.45}}>{m.text}</div>)}
+      </div>
+      <form onSubmit={submit} style={{padding:12,borderTop:`1px solid ${T.border}`,display:"flex",gap:8}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask or add lead/expense..." style={{flex:1}} />
+        <PrimaryBtn small>Send</PrimaryBtn>
+      </form>
+    </div>}
+  </>;
+}
+
 // 
 // ROOT APP
 // 
@@ -4506,6 +4638,19 @@ export default function App() {
           </main>
         </div>
       </div>
+      <SmartAssistant
+        leads={activeWorkflowLeads}
+        setLeads={setLeads}
+        orders={visibleOrders}
+        followups={visibleFollowups}
+        setFollowups={setFollowups}
+        salesmen={salesmen}
+        expenses={expenses}
+        setExpenses={setExpenses}
+        smartInventory={smartInventory}
+        role={role}
+        canWrite={!isManager}
+      />
     </>
   );
 }
