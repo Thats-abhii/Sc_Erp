@@ -3880,7 +3880,10 @@ function SimpleDashboard({ leads, orders, followups, payments, role, channelPart
   const addDays=(date,days)=>{ const d=new Date(`${date}T12:00:00`); d.setDate(d.getDate()+days); return d.toISOString().split("T")[0]; };
   const dashboardDate=/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)?selectedDate:today;
   const tomorrow=addDays(today,1);
-  const title=role==="salesman"?"My Sales Dashboard":"Management Dashboard";
+  const hour=new Date().getHours();
+  const greeting=hour<12?"Good morning":hour<17?"Good afternoon":hour<21?"Good evening":"Good night";
+  const todayLabel=new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  const title=role==="salesman"?"My Sales Dashboard":greeting;
   const leadById=id=>leads.find(l=>l.id===id);
   const isToday=dashboardDate===today;
   const dateLabel=new Date(`${dashboardDate}T00:00:00`).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"short",year:"numeric"});
@@ -3942,6 +3945,7 @@ function SimpleDashboard({ leads, orders, followups, payments, role, channelPart
         <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
           <div>
             <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:24,color:T.text,marginBottom:4}}>{title}</h1>
+            {role!=="salesman"&&<div style={{fontSize:13,color:T.muted,fontWeight:700}}>{todayLabel}</div>}
           </div>
         </div>
       </div>
