@@ -4638,7 +4638,7 @@ export default function App() {
           </main>
         </div>
       </div>
-      <SmartAssistant
+      {!isManager&&<SmartAssistant
         leads={activeWorkflowLeads}
         setLeads={setLeads}
         orders={visibleOrders}
@@ -4649,8 +4649,8 @@ export default function App() {
         setExpenses={setExpenses}
         smartInventory={smartInventory}
         role={role}
-        canWrite={!isManager}
-      />
+        canWrite
+      />}
     </>
   );
 }
