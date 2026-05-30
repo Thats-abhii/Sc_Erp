@@ -3930,16 +3930,24 @@ function SimpleDashboard({ leads, orders, followups, payments, role, channelPart
     installation:{title:"Installation Pending",count:installationTasks.length,color:T.purple,items:installationTasks},
     completed:{title:"Completed",count:completedToday.length,color:T.green,items:completedToday},
   };
+  const CompactStat=({ label, value, sub, accent=T.amber })=>(
+    <div style={{position:"relative",overflow:"hidden",background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:"11px 12px",minHeight:88,boxShadow:"0 6px 14px rgba(15,23,42,.045)"}}>
+      <div style={{fontSize:10,fontWeight:800,color:T.muted,letterSpacing:.4,textTransform:"uppercase",marginBottom:6,textAlign:"center"}}>{label}</div>
+      <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:String(value).length>12?18:24,fontWeight:800,color:accent,lineHeight:1,textAlign:"center",whiteSpace:"nowrap"}}>{value}</div>
+      {sub&&<div style={{fontSize:11,color:T.muted,marginTop:5,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub}</div>}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${accent}66,transparent)`}} />
+    </div>
+  );
   const Sticker=({ id })=>{
     const g=taskGroups[id];
     return (
-      <button onClick={()=>setOpenTask(id)} style={{background:"#fff",border:`1px solid ${T.border}`,borderLeft:`5px solid ${g.color}`,borderRadius:10,padding:"16px 18px",textAlign:"left",cursor:"pointer",boxShadow:"0 8px 18px rgba(15,23,42,.05)",fontFamily:"inherit"}}>
+      <button onClick={()=>setOpenTask(id)} style={{background:"#fff",border:`1px solid ${T.border}`,borderLeft:`5px solid ${g.color}`,borderRadius:9,padding:"12px 14px",textAlign:"left",cursor:"pointer",boxShadow:"0 6px 14px rgba(15,23,42,.045)",fontFamily:"inherit",minHeight:72}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
           <div>
-            <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:5}}>{g.title}</div>
-            <div style={{fontSize:12,color:T.muted}}>For {dashboardDate} | click to view</div>
+            <div style={{fontSize:12,fontWeight:800,color:T.text,marginBottom:3}}>{g.title}</div>
+            <div style={{fontSize:11,color:T.muted}}>For {dashboardDate} | click to view</div>
           </div>
-          <div style={{width:38,height:38,borderRadius:10,background:`${g.color}14`,color:g.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:800}}>{g.count}</div>
+          <div style={{width:34,height:34,borderRadius:9,background:`${g.color}14`,color:g.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:800}}>{g.count}</div>
         </div>
       </button>
     );
@@ -3959,48 +3967,48 @@ function SimpleDashboard({ leads, orders, followups, payments, role, channelPart
   );
 
   return (
-    <div>
-      <div style={{marginBottom:22}}>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div>
         {role==="salesman"
           ? <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:24,color:T.text,marginBottom:4}}>{title}</h1>
-          : <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap",background:`linear-gradient(135deg, ${sky.bg}, #ffffff)`,border:`1px solid ${sky.border}`,borderRadius:12,padding:"16px 18px",boxShadow:"0 10px 28px rgba(15,23,42,.06)"}}>
+          : <div style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",flexWrap:"wrap",background:`linear-gradient(135deg, ${sky.bg}, #ffffff)`,border:`1px solid ${sky.border}`,borderRadius:10,padding:"12px 14px",boxShadow:"0 8px 20px rgba(15,23,42,.05)"}}>
               <div style={{display:"flex",alignItems:"center",gap:14}}>
                 <TimeIcon />
                 <div>
                   <div style={{fontSize:11,fontWeight:900,color:sky.accent,textTransform:"uppercase",letterSpacing:.6}}>{sky.label}</div>
-                  <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:25,color:T.text,margin:"2px 0 4px"}}>{title}</h1>
-                  <div style={{fontSize:13,color:T.sub,fontWeight:700}}>{greetingSub}</div>
+                  <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:23,color:T.text,margin:"1px 0 3px"}}>{title}</h1>
+                  <div style={{fontSize:12,color:T.sub,fontWeight:700}}>{greetingSub}</div>
                 </div>
               </div>
               <div style={{textAlign:"right"}}>
-                <div style={{fontSize:12,color:T.muted,fontWeight:800}}>Today</div>
-                <div style={{fontSize:15,color:T.text,fontWeight:900,marginTop:3}}>{todayLabel}</div>
+                <div style={{fontSize:11,color:T.muted,fontWeight:800}}>Today</div>
+                <div style={{fontSize:14,color:T.text,fontWeight:900,marginTop:2}}>{todayLabel}</div>
               </div>
             </div>}
       </div>
 
-      {cpLeadNotifications.length>0&&<GlassCard style={{marginBottom:16,borderColor:"rgba(96,165,250,.28)",background:"rgba(96,165,250,.06)"}}>
-        <div style={{fontSize:13,fontWeight:800,color:T.blue,marginBottom:10}}>New Channel Partner Leads</div>
+      {cpLeadNotifications.length>0&&<GlassCard style={{padding:12,borderColor:"rgba(96,165,250,.28)",background:"rgba(96,165,250,.06)"}}>
+        <div style={{fontSize:12,fontWeight:800,color:T.blue,marginBottom:8}}>New Channel Partner Leads</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {cpLeadNotifications.map(l=><span key={l.id} style={{fontSize:12,color:T.text,border:`1px solid ${T.border}`,background:"#fff",borderRadius:8,padding:"7px 10px"}}>{l.name} | {l.channelPartnerName||"CP"} | Assign salesman in Lead Management</span>)}
+          {cpLeadNotifications.map(l=><span key={l.id} style={{fontSize:11,color:T.text,border:`1px solid ${T.border}`,background:"#fff",borderRadius:7,padding:"5px 8px"}}>{l.name} | {l.channelPartnerName||"CP"} | Assign salesman</span>)}
         </div>
       </GlassCard>}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14,marginBottom:18}}>
-        <StatKPI label="Total Leads" value={leads.length} accent={T.blue} />
-        <StatKPI label="Active Leads" value={activeLeads} sub="before production order" accent={T.amber} />
-        <StatKPI label="Converted" value={converted} sub="successful leads" accent={T.green} />
-        <StatKPI label="Total Collected" value={inr(money.revenue)} sub="retail + channel partner" accent={T.green} />
-        <StatKPI label="Retail Collected" value={inr(money.orderCollected)} sub={`${inr(money.orderOutstanding)} pending`} accent={T.blue} />
-        <StatKPI label="CP Collected" value={inr(money.partnerCollected)} sub={`${inr(money.partnerOutstanding)} pending`} accent={T.teal} />
-        <StatKPI label="Retail Pending" value={inr(money.orderOutstanding)} sub="direct customer balance" accent={T.orange} />
-        <StatKPI label="CP Pending" value={inr(money.partnerOutstanding)} sub="channel partner balance" accent={T.red} />
-        <StatKPI label="Expenses MTD" value={inr(expensesMTD)} sub={currentMonth} accent={T.red} />
-        <StatKPI label="Expenses YTD" value={inr(expensesYTD)} sub={currentYear} accent={T.purple} />
+      <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(135px,1fr))",gap:10}}>
+        <CompactStat label="Total Leads" value={leads.length} accent={T.blue} />
+        <CompactStat label="Active Leads" value={activeLeads} accent={T.amber} />
+        <CompactStat label="Converted" value={converted} sub="successful leads" accent={T.green} />
+        <CompactStat label="Total Collected" value={inr(money.revenue)} sub="retail + CP" accent={T.green} />
+        <CompactStat label="Retail Collected" value={inr(money.orderCollected)} sub={`${inr(money.orderOutstanding)} pending`} accent={T.blue} />
+        <CompactStat label="CP Collected" value={inr(money.partnerCollected)} sub={`${inr(money.partnerOutstanding)} pending`} accent={T.teal} />
+        <CompactStat label="Retail Pending" value={inr(money.orderOutstanding)} sub="direct balance" accent={T.orange} />
+        <CompactStat label="CP Pending" value={inr(money.partnerOutstanding)} sub="partner balance" accent={T.red} />
+        <CompactStat label="Expenses MTD" value={inr(expensesMTD)} sub={currentMonth} accent={T.red} />
+        <CompactStat label="Expenses YTD" value={inr(expensesYTD)} sub={currentYear} accent={T.purple} />
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:16,alignItems:"start"}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:10,alignItems:"start"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(150px,1fr))",gap:10}}>
           {["followups","measurement","balance","installation","completed"].map(id=><Sticker key={id} id={id} />)}
         </div>
       </div>
@@ -4794,7 +4802,7 @@ export default function App() {
           )}
 
           {/* Module Content */}
-          <main style={{flex:1,overflowY:"auto",padding:24}}>
+          <main style={{flex:1,overflowY:"auto",padding:mod==="dashboard"?16:24}}>
             {moduleMap[mod]}
           </main>
         </div>
