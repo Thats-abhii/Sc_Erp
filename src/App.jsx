@@ -82,6 +82,26 @@ const saveSharedAppState = async state => {
 //  HELPERS 
 const inr = n => new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:0}).format(n);
 const todayStr = () => new Date().toISOString().split("T")[0];
+const csvCell = value => `"${String(value ?? "").replace(/"/g,'""')}"`;
+const downloadCsv = (filename, rows) => {
+  if(!rows?.length)return alert("No data available for selected date range");
+  const headers=Object.keys(rows[0]);
+  const csv=[headers.join(","),...rows.map(row=>headers.map(key=>csvCell(row[key])).join(","))].join("\n");
+  const blob=new Blob([`\uFEFF${csv}`],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+const inDateRange = (date, from, to) => {
+  const d=String(date||"").slice(0,10);
+  if(!d)return false;
+  return (!from||d>=from)&&(!to||d<=to);
+};
 const smName = (id, salesmen=SALESMEN) => salesmen.find(s=>s.id===id)?.name||"";
 const smColor = (id, salesmen=SALESMEN) => salesmen.find(s=>s.id===id)?.color||"#64748b";
 const leadSortTime = lead => {
@@ -2297,6 +2317,8 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
   const [billOrder,setBillOrder]=useState(null);
   const [payOrder,setPayOrder]=useState(null);
   const [savingBill,setSavingBill]=useState(false);
+  const [exportFrom,setExportFrom]=useState(todayStr().slice(0,7)+"-01");
+  const [exportTo,setExportTo]=useState(todayStr());
   const [billForm,setBillForm]=useState({invoiceNo:"",date:todayStr(),customerGstin:"",customerAddress:"",place:"Karnataka",hsn:"",notes:""});
   const [payForm,setPayForm]=useState({paid:""});
   const billFor=orderId=>bills.find(b=>b.orderId===orderId);
@@ -2350,6 +2372,64 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
     setPartners?.(ps=>ps.map(p=>({...p,requests:(p.requests||[]).map(r=>r.orderId===payOrder.id||r.leadId===payOrder.leadId?{...r,paid,balance,status:paid>0?"Payment Updated":"Payment Pending"}:r)})));
     setPayOrder(null);
   };
+  const exportBillingCsv=()=>{
+    const rows=billableOrders
+      .filter(o=>inDateRange(o.created||billFor(o.id)?.created,exportFrom,exportTo))
+      .map(o=>{
+        const bill=billFor(o.id);
+        const totals=billTotals({...o,advance:paidFor(o)});
+        const isGstBill=bill?.type==="GST Bill";
+        const isCash=bill?.type==="Cash No Bill";
+        const lineRows=(o.products||[]).map((p,i)=>[
+          `${i+1}. ${p.name||""}`,
+          p.window?`Window: ${p.window}`:"",
+          p.size?`Size: ${p.size}`:"",
+          p.qty?`Qty: ${p.qty}`:"",
+          p.unitPrice?`Rate: ${p.unitPrice}`:"",
+          p.total?`Amount: ${p.total}`:"",
+          p.color?`Color: ${p.color}`:"",
+          p.material?`Material: ${p.material}`:"",
+          p.code?`Code: ${p.code}`:""
+        ].filter(Boolean).join(" | "));
+        return {
+          Order_Date:o.created||"",
+          Bill_Record_Date:bill?.created||"",
+          Invoice_Date:bill?.date||"",
+          Order_ID:o.id,
+          Lead_ID:o.leadId||"",
+          Customer_Name:o.customer||"",
+          Mobile:o.mobile||"",
+          Product_Summary:(o.products||[]).map(p=>p.name).join(" | "),
+          Product_Line_Details:lineRows.join(" || "),
+          Gross_Amount_Without_Discount:totals.gross,
+          Discount_Amount:totals.discount,
+          Amount_Without_GST_Taxable:totals.taxable,
+          GST_Percent:isGstBill?totals.gstPct:0,
+          GST_Amount:isGstBill?totals.gstAmount:0,
+          Amount_With_GST:isGstBill?totals.final:0,
+          Cash_No_Bill_Amount:isCash?totals.final:0,
+          Final_Order_Amount:totals.final,
+          Paid_Amount:totals.paid,
+          Balance_Amount:totals.balance,
+          Payment_Status:totals.paid<=0?"No Paid":totals.balance>0?"Partially Paid":"Fully Paid",
+          Billing_Status:bill?.type||"Pending",
+          Invoice_No:bill?.invoiceNo||"",
+          Customer_GSTIN:bill?.customerGstin||"",
+          Customer_Address:bill?.customerAddress||"",
+          Place_Of_Supply:bill?.place||"",
+          HSN_SAC:bill?.hsn||"",
+          Order_Status:o.status||"",
+          Production_Stage:o.productionStage||"",
+          Installation_Required:o.install?"Yes":"No",
+          Installer:o.installer||"",
+          Delivery_Date:o.delivery||"",
+          Cash_Details:isCash?(bill?.notes||"Cash work without GST bill"):"",
+          Internal_Notes:bill?.notes||"",
+          Created_At:o.createdAt||""
+        };
+      });
+    downloadCsv(`smartcovering-billing-${exportFrom||"all"}-to-${exportTo||"all"}.csv`,rows);
+  };
   return (
     <div>
       <SectionTitle>Billing Session</SectionTitle>
@@ -2363,6 +2443,16 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
         <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <div><div style={{fontWeight:800,color:T.text}}>Invoice control</div><div style={{fontSize:12,color:T.muted,marginTop:3}}>Generate GST bill PDFs, or mark selected work as cash/no-bill for internal tracking.</div></div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["billable","Pending"],["billed","Billed"],["cash","Cash / No Bill"],["all","All"]].map(([id,label])=><button key={id} onClick={()=>setFilter(id)} style={{border:`1px solid ${filter===id?T.blue:T.border}`,background:filter===id?T.blue:T.cardHi,color:filter===id?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div>
+        </div>
+      </GlassCard>
+      <GlassCard style={{marginBottom:18}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"end",flexWrap:"wrap"}}>
+          <div><div style={{fontWeight:800,color:T.text}}>Export billing CSV</div><div style={{fontSize:12,color:T.muted,marginTop:3}}>Choose date range and download billing data for audit.</div></div>
+          <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
+            <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
+            <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
+            <PrimaryBtn onClick={exportBillingCsv}>Export CSV</PrimaryBtn>
+          </div>
         </div>
       </GlassCard>
       <GlassCard style={{padding:0}}>
@@ -2395,6 +2485,8 @@ function DailyExpenses({ expenses, setExpenses }) {
   const [editId,setEditId]=useState(null);
   const blank={date:todayStr(),name:"Raw Material",amount:"",reason:""};
   const [form,setForm]=useState(blank);
+  const [exportFrom,setExportFrom]=useState(todayStr().slice(0,7)+"-01");
+  const [exportTo,setExportTo]=useState(todayStr());
   const month=todayStr().slice(0,7);
   const mtd=expenses.filter(e=>e.date?.startsWith(month)).reduce((s,e)=>s+Number(e.amount||0),0);
   const today=expenses.filter(e=>e.date===todayStr()).reduce((s,e)=>s+Number(e.amount||0),0);
@@ -2413,6 +2505,32 @@ function DailyExpenses({ expenses, setExpenses }) {
     setForm({date:e.date||todayStr(),name:e.cat||e.name||"Other",amount:String(e.amount||""),reason:e.reason||e.desc||""});
     setShowAdd(true);
   };
+  const exportExpensesCsv=()=>{
+    const rows=expenses
+      .filter(e=>inDateRange(e.date,exportFrom,exportTo))
+      .map(e=>({
+        Date:e.date||"",
+        Expense_ID:e.id||"",
+        Category:e.cat||e.name||"Other",
+        Expense_Name:e.name||e.cat||e.desc||"",
+        Amount:Number(e.amount||0),
+        Reason:e.reason||e.desc||"",
+        Description:e.desc||"",
+        Payment_Mode:e.mode||e.paymentMode||"",
+        Vendor:e.vendor||e.supplier||"",
+        Bill_No:e.billNo||e.invoiceNo||e.refNo||"",
+        GSTIN:e.gstin||"",
+        GST_Amount:Number(e.gstAmount||0),
+        Amount_Without_GST:Number(e.taxable||e.amountWithoutGst||e.amount||0)-Number(e.gstAmount||0),
+        Amount_With_GST:Number(e.total||e.amountWithGst||e.amount||0),
+        Spent_By:e.spentBy||"",
+        Created_By:e.createdBy||"",
+        Created_At:e.createdAt||"",
+        Notes:e.notes||"",
+        Raw_Record:JSON.stringify(e)
+      }));
+    downloadCsv(`smartcovering-expenses-${exportFrom||"all"}-to-${exportTo||"all"}.csv`,rows);
+  };
   return <div>
     <SectionTitle action={<PrimaryBtn onClick={openAdd}>+ Add Expense</PrimaryBtn>}>Expenses</SectionTitle>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:18}}>
@@ -2420,6 +2538,16 @@ function DailyExpenses({ expenses, setExpenses }) {
       <StatKPI label="Today Expenses" value={inr(today)} sub={todayStr()} accent={T.orange} />
       <StatKPI label="Total Expenses" value={inr(total)} sub="all recorded" accent={T.purple} />
     </div>
+    <GlassCard style={{marginBottom:18}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"end",flexWrap:"wrap"}}>
+        <div><div style={{fontWeight:800,color:T.text}}>Export expenses CSV</div><div style={{fontSize:12,color:T.muted,marginTop:3}}>Choose date range and download expenses for CA audit.</div></div>
+        <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
+          <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
+          <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
+          <PrimaryBtn onClick={exportExpensesCsv} color={T.red}>Export CSV</PrimaryBtn>
+        </div>
+      </div>
+    </GlassCard>
     <GlassCard style={{padding:0}}>
       <Table headers={["Date","Expense Name","Amount","Reason","Action"]}>
         {expenses.map(e=><TR key={e.id}><TD color={T.sub}>{e.date}</TD><TD bold>{e.cat||e.name||e.desc}</TD><TD bold color={T.red}>{inr(e.amount)}</TD><TD color={T.muted}>{e.reason||e.desc||"-"}</TD><TD><EditBtn onClick={()=>openEdit(e)}>Edit</EditBtn></TD></TR>)}
