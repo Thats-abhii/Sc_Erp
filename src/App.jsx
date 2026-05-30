@@ -3882,6 +3882,14 @@ function SimpleDashboard({ leads, orders, followups, payments, role, channelPart
   const tomorrow=addDays(today,1);
   const hour=new Date().getHours();
   const greeting=hour<12?"Good morning":hour<17?"Good afternoon":hour<21?"Good evening":"Good night";
+  const greetingSub=hour<12?"A fresh start for today's leads and follow-ups.":hour<17?"Keep the day's work moving smoothly.":hour<21?"Wrap up pending work and review progress.":"Review the day and get ready for tomorrow.";
+  const sky=hour<12
+    ? {bg:"#fff7ed",border:"#fed7aa",accent:"#f59e0b",label:"Morning"}
+    : hour<17
+      ? {bg:"#eff6ff",border:"#bfdbfe",accent:"#2563eb",label:"Afternoon"}
+      : hour<21
+        ? {bg:"#fff1f2",border:"#fecdd3",accent:"#f97316",label:"Evening"}
+        : {bg:"#eef2ff",border:"#c7d2fe",accent:"#4f46e5",label:"Night"};
   const todayLabel=new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   const title=role==="salesman"?"My Sales Dashboard":greeting;
   const leadById=id=>leads.find(l=>l.id===id);
@@ -3938,16 +3946,37 @@ function SimpleDashboard({ leads, orders, followups, payments, role, channelPart
   };
   const Empty=()=> <div style={{fontSize:13,color:T.muted,padding:"10px 0"}}>No pending items.</div>;
   const modalGroup=openTask?taskGroups[openTask]:null;
+  const TimeIcon=()=>(
+    <div style={{width:58,height:58,borderRadius:18,background:sky.bg,border:`1px solid ${sky.border}`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden",flexShrink:0}}>
+      {hour<21
+        ? <div style={{width:28,height:28,borderRadius:"50%",background:sky.accent,boxShadow:`0 0 0 8px ${sky.accent}22,0 0 28px ${sky.accent}55`}} />
+        : <div style={{width:30,height:30,borderRadius:"50%",background:sky.accent,boxShadow:`0 0 0 8px ${sky.accent}1f`,position:"relative"}}>
+            <div style={{position:"absolute",width:26,height:26,borderRadius:"50%",background:sky.bg,left:9,top:-3}} />
+          </div>}
+      <div style={{position:"absolute",right:9,bottom:10,width:8,height:8,borderRadius:"50%",background:sky.accent,opacity:.35}} />
+      <div style={{position:"absolute",left:10,top:10,width:5,height:5,borderRadius:"50%",background:sky.accent,opacity:.25}} />
+    </div>
+  );
 
   return (
     <div>
       <div style={{marginBottom:22}}>
-        <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap"}}>
-          <div>
-            <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:24,color:T.text,marginBottom:4}}>{title}</h1>
-            {role!=="salesman"&&<div style={{fontSize:13,color:T.muted,fontWeight:700}}>{todayLabel}</div>}
-          </div>
-        </div>
+        {role==="salesman"
+          ? <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:24,color:T.text,marginBottom:4}}>{title}</h1>
+          : <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center",flexWrap:"wrap",background:`linear-gradient(135deg, ${sky.bg}, #ffffff)`,border:`1px solid ${sky.border}`,borderRadius:12,padding:"16px 18px",boxShadow:"0 10px 28px rgba(15,23,42,.06)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <TimeIcon />
+                <div>
+                  <div style={{fontSize:11,fontWeight:900,color:sky.accent,textTransform:"uppercase",letterSpacing:.6}}>{sky.label}</div>
+                  <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:25,color:T.text,margin:"2px 0 4px"}}>{title}</h1>
+                  <div style={{fontSize:13,color:T.sub,fontWeight:700}}>{greetingSub}</div>
+                </div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:12,color:T.muted,fontWeight:800}}>Today</div>
+                <div style={{fontSize:15,color:T.text,fontWeight:900,marginTop:3}}>{todayLabel}</div>
+              </div>
+            </div>}
       </div>
 
       {cpLeadNotifications.length>0&&<GlassCard style={{marginBottom:16,borderColor:"rgba(96,165,250,.28)",background:"rgba(96,165,250,.06)"}}>
