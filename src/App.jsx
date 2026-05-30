@@ -3988,7 +3988,7 @@ function SimpleDashboard({ leads, orders, followups, payments, role, channelPart
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14,marginBottom:18}}>
         <StatKPI label="Total Leads" value={leads.length} sub={`Active ${activeLeads} + Converted ${converted}`} accent={T.blue} />
-        <StatKPI label="Active Leads" value={activeLeads} accent={T.amber} />
+        <StatKPI label="Active Leads" value={activeLeads} sub="Active lead" accent={T.amber} />
         <StatKPI label="Converted" value={converted} sub="successful leads" accent={T.green} />
         <StatKPI label="Total Collected" value={inr(money.revenue)} sub="retail + channel partner" accent={T.green} />
         <StatKPI label="Retail Collected" value={inr(money.orderCollected)} sub={`${inr(money.orderOutstanding)} pending`} accent={T.blue} />
@@ -4706,6 +4706,7 @@ export default function App() {
             {visibleNav.map(item=>{
               const active=mod===item.id;
               const hasAlert=item.id==="alerts"&&alertCount>0;
+              const navAccent=["billing","dailyExpenses"].includes(item.id)?T.blue:T.amber;
               return (
                 <button key={item.id} onClick={()=>setMod(item.id)} style={{
                   width:"100%",display:"flex",alignItems:"center",gap:10,
@@ -4713,8 +4714,8 @@ export default function App() {
                   borderRadius:10,border:"none",cursor:"pointer",
                   fontFamily:"inherit",fontSize:12,fontWeight:active?600:400,
                   marginBottom:2,
-                  background:active?`${T.amber}18`:"transparent",
-                  color:active?T.amber:T.muted,
+                  background:active?`${navAccent}18`:"transparent",
+                  color:active?navAccent:T.muted,
                   transition:"all .15s",
                   justifyContent:collapsed?"center":"flex-start",
                   position:"relative",
@@ -4722,7 +4723,7 @@ export default function App() {
                 onMouseEnter={e=>{ if(!active){e.currentTarget.style.background="rgba(255,255,255,.05)";e.currentTarget.style.color=T.text} }}
                 onMouseLeave={e=>{ if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.muted} }}
                 >
-                  {active&&<div style={{position:"absolute",left:0,top:"20%",width:3,height:"60%",background:T.amber,borderRadius:"0 2px 2px 0"}} />}
+                  {active&&<div style={{position:"absolute",left:0,top:"20%",width:3,height:"60%",background:navAccent,borderRadius:"0 2px 2px 0"}} />}
                   {item.icon&&<span style={{fontSize:14,flexShrink:0}}>{item.icon}</span>}
                   {!collapsed&&<span style={{whiteSpace:"nowrap"}}>{item.label}</span>}
                   {!collapsed&&hasAlert&&<span style={{marginLeft:"auto",background:T.orange,color:"#fff",fontSize:10,borderRadius:99,padding:"1px 6px",fontWeight:700}}>{alertCount}</span>}
