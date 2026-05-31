@@ -61,9 +61,14 @@ const clearExistingBusinessDataOnce = () => {
 };
 const API_BASE = typeof window !== "undefined" ? (window.SMARTCOVERING_API_URL || "") : "";
 const APP_STATE_SECRET = typeof window !== "undefined" ? (window.SMARTCOVERING_STATE_SECRET || "") : "";
+const AUTH_TOKEN_KEY = "smartcovering_auth_token";
+const authToken = () => {
+  try { return sessionStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; }
+};
 const APP_STATE_HEADERS = () => ({
   "Content-Type": "application/json",
-  ...(APP_STATE_SECRET ? { "x-smartcovering-state-secret": APP_STATE_SECRET } : {})
+  ...(APP_STATE_SECRET ? { "x-smartcovering-state-secret": APP_STATE_SECRET } : {}),
+  ...(authToken() ? { Authorization:`Bearer ${authToken()}` } : {})
 });
 const fetchSharedAppState = async () => {
   const res = await fetch(`${API_BASE}/api/app-state`, { headers: APP_STATE_HEADERS(), credentials:"include" });
@@ -84,16 +89,19 @@ const authRequest = async (path, options={}) => {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials:"include",
-    headers:{ "Content-Type":"application/json", ...(options.headers||{}) }
+    headers:{ "Content-Type":"application/json", ...(authToken()?{Authorization:`Bearer ${authToken()}`}:{}) , ...(options.headers||{}) }
   });
   const data = await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(data.error||`Request failed: ${res.status}`);
   return data;
 };
 const loginToBackend = payload => authRequest("/api/auth/login", { method:"POST", body:JSON.stringify(payload) });
-const logoutFromBackend = () => authRequest("/api/auth/logout", { method:"POST" }).catch(()=>{});
+const rememberAuthToken = token => { try { if(token)sessionStorage.setItem(AUTH_TOKEN_KEY,token); } catch {} };
+const clearAuthToken = () => { try { sessionStorage.removeItem(AUTH_TOKEN_KEY); } catch {} };
+const logoutFromBackend = () => { clearAuthToken(); return authRequest("/api/auth/logout", { method:"POST" }).catch(()=>{}); };
 const getBackendUser = () => authRequest("/api/auth/me");
 const createBackendAccessUser = payload => authRequest("/api/auth/users", { method:"POST", body:JSON.stringify(payload) });
+const changeOwnBackendPassword = payload => authRequest("/api/auth/change-password", { method:"POST", body:JSON.stringify(payload) });
 
 //  HELPERS 
 const inr = n => new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:0}).format(n);
@@ -3152,12 +3160,17 @@ function Salesmen({ leads, setLeads, followups, setFollowups, orders, payments, 
     setReassign(null);
     alert(`Reassigned ${owned.length} lead(s) and removed ${reassign.salesman.name}.`);
   };
-  const changePassword=(e,salesman)=>{
+  const changePassword=async (e,salesman)=>{
     e.stopPropagation();
     const next=prompt(`Enter new password for ${salesman.name}`, "");
     if(!next)return;
-    setSalesmen(list=>list.map(s=>s.id===salesman.id?{...s,password:next}:s));
-    if(sel?.id===salesman.id)setSel(s=>({...s,password:next}));
+    try {
+      await createBackendAccessUser({name:salesman.name,loginId:salesman.loginId,password:next,role:"salesman",linkedEntityId:salesman.id});
+    } catch (error) {
+      return alert(error.message||"Could not update salesman password");
+    }
+    setSalesmen(list=>list.map(s=>s.id===salesman.id?{...s,password:""}:s));
+    if(sel?.id===salesman.id)setSel(s=>({...s,password:""}));
     alert("Password changed. Any logged-in session for this salesman will be logged out and old password will not work.");
   };
   const calcSalesmanMetrics=s=>{
@@ -3305,7 +3318,7 @@ function Salesmen({ leads, setLeads, followups, setFollowups, orders, payments, 
           <div>
             <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:18,fontWeight:700,color:T.text}}>{sel.name}</div>
             <div style={{fontSize:13,color:T.muted,marginTop:2}}>{sel.mobile} | {sel.email}</div>
-            <div style={{fontSize:12,color:T.sub,marginTop:2}}>{sel.area} | Joined {sel.joining} | Login ID: {sel.loginId} | Password: {sel.password}</div>
+            <div style={{fontSize:12,color:T.sub,marginTop:2}}>{sel.area} | Joined {sel.joining} | Login ID: {sel.loginId} | Password: hidden for security</div>
             <div style={{marginTop:10}}><PrimaryBtn small color={T.blue} onClick={e=>changePassword(e,sel)}>Change Password</PrimaryBtn></div>
           </div>
         </div>
@@ -3420,11 +3433,16 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
     setSelected(null); setShowPartner(false); setPartnerForm(blankPartner);
     setSavingPartner(false);
   };
-  const changePartnerPassword=(partner)=>{
+  const changePartnerPassword=async (partner)=>{
     const next=prompt(`Enter new password for ${partner.name}`, "");
     if(!next)return;
-    setPartners(ps=>ps.map(p=>p.id===partner.id?{...p,password:next}:p));
-    if(selected?.id===partner.id)setSelected(p=>({...p,password:next}));
+    try {
+      await createBackendAccessUser({name:partner.name,loginId:partner.loginId,password:next,role:"channel_partner",linkedEntityId:partner.id});
+    } catch (error) {
+      return alert(error.message||"Could not update channel partner password");
+    }
+    setPartners(ps=>ps.map(p=>p.id===partner.id?{...p,password:""}:p));
+    if(selected?.id===partner.id)setSelected(p=>({...p,password:""}));
     alert("Password changed. Any logged-in session for this channel partner will be logged out and old password will not work.");
   };
   const openAcceptRequest=(partner,req)=>{
@@ -3549,7 +3567,7 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
 
       {selected&&!showPartner&&<Modal title={`${selected.name} - Business Details`} onClose={()=>setSelected(null)} wide>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:14}}>
-          <div style={{fontSize:12,color:T.muted}}>Login ID: <b style={{color:T.text}}>{selected.loginId}</b> | Current Password: <b style={{color:T.text}}>{selected.password}</b></div>
+          <div style={{fontSize:12,color:T.muted}}>Login ID: <b style={{color:T.text}}>{selected.loginId}</b> | Password: <b style={{color:T.text}}>hidden for security</b></div>
           {!isManager&&<PrimaryBtn small color={T.blue} onClick={()=>changePartnerPassword(selected)}>Change Password</PrimaryBtn>}
         </div>
         <Table headers={["Date","Project","Business","Paid","Pending","Action"]}>
@@ -4457,6 +4475,7 @@ function LoginScreen({ onLogin }) {
     setError("");
     try {
       const data=await loginToBackend({loginId:form.loginId,password:form.password,role:backendRole});
+      rememberAuthToken(data.token);
       setLoginModal(null);
       onLogin(appRole,entityIdFromUser(data.user),"");
     } catch (error) {
@@ -4927,6 +4946,18 @@ export default function App() {
   const isManager=isSalesman||isPartner||isProductionTeam;
   const activeSalesman=salesmen.find(s=>s.id===activeSalesmanId);
   const activePartner=channelPartners.find(p=>p.id===activePartnerId);
+  const changeOwnPassword=async ()=>{
+    const currentPassword=prompt("Enter current password", "");
+    if(!currentPassword)return;
+    const newPassword=prompt("Enter new password (minimum 8 characters)", "");
+    if(!newPassword)return;
+    try {
+      await changeOwnBackendPassword({currentPassword,newPassword});
+      alert("Password changed successfully. Please use the new password from next login.");
+    } catch (error) {
+      alert(error.message||"Could not change password");
+    }
+  };
   useEffect(()=>{
     if(role==="salesman"&&activeSalesmanId&&authPassword){
       const current=salesmen.find(s=>s.id===activeSalesmanId);
@@ -5068,6 +5099,7 @@ export default function App() {
                   {!collapsed&&<div>
                     <div style={{fontSize:12,fontWeight:500,color:T.text}}>{isProductionTeam?"Production Team":(isPartner?(activePartner?.name||"Channel Partner"):(isSalesman?(activeSalesman?.name||"Salesman"):"Management"))}</div>
                   </div>}
+                  {isManager&&<button onClick={changeOwnPassword} style={{padding:"6px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",transition:"all .15s"}}>Change Password</button>}
                   <button onClick={()=>{logoutFromBackend();setRole(null);setActiveSalesmanId(null);setActivePartnerId(null);setAuthPassword("");setMod("dashboard")}} style={{padding:"6px 14px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",transition:"all .15s"}}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.05)";e.currentTarget.style.color=T.text}}
                   onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.muted}}
