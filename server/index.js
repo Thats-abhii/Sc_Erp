@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import express from "express";
+import bcrypt from "bcryptjs";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -29,6 +30,21 @@ if (process.env.DATABASE_URL) {
   const schema = await readFile(schemaPath, "utf8");
   await query(schema);
   console.log("Database schema checked");
+
+  const adminLoginId = (process.env.ADMIN_BOOTSTRAP_LOGIN_ID || "admin").trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD || "SmartCovering@2026";
+  const existingAdmins = await query("select id from users where role::text = 'management' and active = true limit 1");
+  if (!existingAdmins.length) {
+    const passwordHash = await bcrypt.hash(adminPassword, 12);
+    await query(
+      `insert into users (name, email, login_id, password_hash, role, active)
+       values ($1, $2, $3, $4, 'management', true)
+       on conflict (email)
+       do update set login_id = excluded.login_id, password_hash = excluded.password_hash, role = excluded.role, active = true`,
+      ["SmartCovering Admin", `${adminLoginId}@smartcovering.local`, adminLoginId, passwordHash]
+    );
+    console.log(`Bootstrap management user ready: ${adminLoginId}`);
+  }
 }
 
 app.use(helmet());
