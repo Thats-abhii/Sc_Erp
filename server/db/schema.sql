@@ -18,11 +18,13 @@ create table if not exists users (
   role user_role not null,
   linked_entity_id text,
   active boolean not null default true,
+  session_version integer not null default 0,
   created_at timestamptz not null default now()
 );
 
 alter table users add column if not exists login_id text unique;
 alter table users add column if not exists linked_entity_id text;
+alter table users add column if not exists session_version integer not null default 0;
 
 create table if not exists salesmen (
   id bigserial primary key,
