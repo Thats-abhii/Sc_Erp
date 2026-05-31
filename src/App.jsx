@@ -44,6 +44,7 @@ const BUSINESS_STORAGE_KEYS = [
   "smartcovering_salesmen",
   "smartcovering_channel_partners",
   "smartcovering_bills",
+  "smartcovering_purchases",
   "smartcovering_smart_inventory",
   "smartcovering_expenses",
   "smartcovering_reassignment_logs",
@@ -459,21 +460,33 @@ const billTotals = order => {
   const balance=Number(order.balance||Math.max(final-paid,0));
   return {gross,discount,taxable,gstPct,gstAmount,final,paid,balance};
 };
+const billTaxDetails = (order, bill={}) => {
+  const totals=billTotals(order);
+  const taxType=bill.taxType||(((bill.place||"Karnataka").toLowerCase()==="karnataka")?"Intra-State":"Inter-State");
+  const isInter=taxType==="Inter-State";
+  const cgstRate=isInter?0:Number(bill.cgstRate ?? (totals.gstPct/2));
+  const sgstRate=isInter?0:Number(bill.sgstRate ?? (totals.gstPct/2));
+  const igstRate=isInter?Number(bill.igstRate ?? totals.gstPct):0;
+  const gstRate=cgstRate+sgstRate+igstRate;
+  const cgst=Math.round(totals.taxable*cgstRate/100);
+  const sgst=Math.round(totals.taxable*sgstRate/100);
+  const igst=Math.round(totals.taxable*igstRate/100);
+  const gstAmount=cgst+sgst+igst;
+  const final=totals.taxable+gstAmount;
+  const balance=Math.max(final-totals.paid,0);
+  return {...totals,taxType,cgstRate,sgstRate,igstRate,gstRate,cgst,sgst,igst,gstAmount,final,balance};
+};
 
 const openBillPdf = (order, bill={}) => {
   const company=QUOTATION_COMPANY;
   const logoUrl=new URL(company.logo, window.location.href).href;
-  const totals=billTotals(order);
+  const totals=billTaxDetails(order,bill);
   const invoiceNo=bill.invoiceNo||`SC/${new Date().getFullYear()}/${String(Date.now()).slice(-5)}`;
   const invoiceDate=bill.date||todayStr();
   const place=bill.place||"Karnataka";
   const hsn=bill.hsn||"";
   const customerAddress=bill.customerAddress||order.address||"";
   const customerGstin=bill.customerGstin||"";
-  const isInterState=(place||"").toLowerCase()!=="karnataka";
-  const cgst=isInterState?0:Math.round(totals.gstAmount/2);
-  const sgst=isInterState?0:Math.round(totals.gstAmount/2);
-  const igst=isInterState?totals.gstAmount:0;
   const win=window.open("","_blank");
   if(!win)return alert("Please allow popups to generate bill PDF");
   win.document.write(`<!doctype html><html><head><title>Invoice ${invoiceNo}</title><style>
@@ -485,7 +498,7 @@ const openBillPdf = (order, bill={}) => {
     <table><thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th>Size</th><th>Qty</th><th>Rate</th><th>Taxable Value</th></tr></thead><tbody>
       ${(order.products||[]).map((p,i)=>`<tr><td>${i+1}</td><td>${p.name||"-"}<br/><span class="muted">${p.window||""}</span></td><td>${hsn||"-"}</td><td>${p.size||"-"}</td><td>${p.qty||1}</td><td>${inr(Number(p.unitPrice||0))}</td><td>${inr(Number(p.total||0))}</td></tr>`).join("")}
     </tbody></table>
-    <div class="summary"><div><span>Gross Amount</span><b>${inr(totals.gross)}</b></div><div><span>Discount</span><b>${inr(totals.discount)}</b></div><div><span>Taxable Amount</span><b>${inr(totals.taxable)}</b></div><div><span>CGST</span><b>${inr(cgst)}</b></div><div><span>SGST</span><b>${inr(sgst)}</b></div><div><span>IGST</span><b>${inr(igst)}</b></div><div class="total"><span>Invoice Total</span><span>${inr(totals.final)}</span></div></div>
+    <div class="summary"><div><span>Gross Amount</span><b>${inr(totals.gross)}</b></div><div><span>Discount</span><b>${inr(totals.discount)}</b></div><div><span>Taxable Amount</span><b>${inr(totals.taxable)}</b></div><div><span>CGST (${totals.cgstRate}%)</span><b>${inr(totals.cgst)}</b></div><div><span>SGST (${totals.sgstRate}%)</span><b>${inr(totals.sgst)}</b></div><div><span>IGST (${totals.igstRate}%)</span><b>${inr(totals.igst)}</b></div><div class="total"><span>Invoice Total</span><span>${inr(totals.final)}</span></div></div>
     <div class="box small"><b>Declaration</b><br/>We declare that this invoice shows the actual price of the goods/services described and that all particulars are true and correct. Subject to Bengaluru jurisdiction.</div>
     <div style="display:flex;justify-content:space-between;margin-top:42px;font-size:12px"><span>Customer Signature</span><b>For ${BRAND.name}</b></div>
   </div></body></html>`);
@@ -2319,8 +2332,25 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
   const [savingBill,setSavingBill]=useState(false);
   const [exportFrom,setExportFrom]=useState(todayStr().slice(0,7)+"-01");
   const [exportTo,setExportTo]=useState(todayStr());
-  const [billForm,setBillForm]=useState({invoiceNo:"",date:todayStr(),customerGstin:"",customerAddress:"",place:"Karnataka",hsn:"",notes:""});
+  const [billForm,setBillForm]=useState({invoiceNo:"",date:todayStr(),customerGstin:"",customerAddress:"",place:"Karnataka",hsn:"",notes:"",taxType:"Intra-State",cgstRate:9,sgstRate:9,igstRate:0});
   const [payForm,setPayForm]=useState({paid:""});
+  const billGstinError=gstin=>{
+    const raw=String(gstin||"").trim().toUpperCase();
+    if(!raw)return "";
+    if(raw.length!==15)return "Customer GSTIN must be exactly 15 characters";
+    if(!/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(raw))return "GSTIN format should be like 29ABCDE1234F1Z5";
+    return "";
+  };
+  const applyCustomerGstin=value=>{
+    const gstin=String(value||"").toUpperCase();
+    const stateCode=gstin.slice(0,2);
+    setBillForm(f=>({
+      ...f,
+      customerGstin:gstin,
+      ...(gstin.startsWith("29")?{taxType:"Intra-State",place:"Karnataka",igstRate:0,cgstRate:f.cgstRate||9,sgstRate:f.sgstRate||9}:{}),
+      ...(/^\d{2}$/.test(stateCode)&&stateCode!=="29"?{taxType:"Inter-State",place:"Inter-State",cgstRate:0,sgstRate:0,igstRate:f.igstRate||18}:{})
+    }));
+  };
   const billFor=orderId=>bills.find(b=>b.orderId===orderId);
   const paidFor=o=>paidForOrder(o,payments);
   const billableOrders=orders.filter(o=>Number(o.final||0)>0);
@@ -2328,15 +2358,21 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
   const totals=billableOrders.reduce((acc,o)=>{ const b=billFor(o.id); acc.total+=Number(o.final||0); if(b?.type==="GST Bill")acc.billed+=Number(o.final||0); if(b?.type==="Cash No Bill")acc.cash+=Number(o.final||0); if(!b)acc.pending+=Number(o.final||0); return acc; },{total:0,billed:0,cash:0,pending:0});
   const openBill=order=>{
     setBillOrder(order);
-    setBillForm({invoiceNo:`SC/${new Date().getFullYear()}/${String(bills.length+1).padStart(4,"0")}`,date:todayStr(),customerGstin:"",customerAddress:"",place:"Karnataka",hsn:"",notes:""});
+    setBillForm({invoiceNo:`SC/${new Date().getFullYear()}/${String(bills.length+1).padStart(4,"0")}`,date:todayStr(),customerGstin:"",customerAddress:"",place:"Karnataka",hsn:"",notes:"",taxType:"Intra-State",cgstRate:9,sgstRate:9,igstRate:0});
   };
   const saveBill=()=>{
     if(savingBill)return;
     if(!billOrder)return;
     if(bills.some(b=>b.orderId===billOrder.id&&b.type==="GST Bill"))return alert("Bill already generated for this order");
     if(onceKeyActive(`bill:${billOrder.id}:gst`))return alert("Processing... duplicate bill blocked");
+    const gstError=billGstinError(billForm.customerGstin);
+    if(gstError)return alert(gstError);
+    const tax=billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm);
+    if(tax.taxType!=="Inter-State"&&tax.cgstRate+tax.sgstRate>18)return alert("CGST + SGST cannot exceed 18%");
+    if(tax.taxType!=="Inter-State"&&tax.cgstRate!==tax.sgstRate)return alert("CGST and SGST must be equal");
+    if(tax.taxType==="Inter-State"&&tax.igstRate>18)return alert("IGST cannot exceed 18%");
     setSavingBill(true);
-    const record={...billForm,id:`BILL${Date.now()}`,orderId:billOrder.id,type:"GST Bill",amount:Number(billOrder.final||0),created:todayStr()};
+    const record={...billForm,id:`BILL${Date.now()}`,orderId:billOrder.id,type:"GST Bill",amount:tax.final,taxType:tax.taxType,cgstRate:tax.cgstRate,sgstRate:tax.sgstRate,igstRate:tax.igstRate,gstRate:tax.gstRate,gstAmount:tax.gstAmount,cgst:tax.cgst,sgst:tax.sgst,igst:tax.igst,created:todayStr()};
     setBills(bs=>[...bs.filter(b=>b.orderId!==billOrder.id),record]);
     auditLog({event:"Created",source:"Billing",recordType:"GST Bill",recordId:record.id,orderId:billOrder.id});
     openBillPdf(billOrder,record);
@@ -2377,9 +2413,9 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
       .filter(o=>inDateRange(o.created||billFor(o.id)?.created,exportFrom,exportTo))
       .map(o=>{
         const bill=billFor(o.id);
-        const totals=billTotals({...o,advance:paidFor(o)});
         const isGstBill=bill?.type==="GST Bill";
         const isCash=bill?.type==="Cash No Bill";
+        const totals=isGstBill?billTaxDetails({...o,advance:paidFor(o)},bill):billTotals({...o,advance:paidFor(o)});
         const lineRows=(o.products||[]).map((p,i)=>[
           `${i+1}. ${p.name||""}`,
           p.window?`Window: ${p.window}`:"",
@@ -2404,7 +2440,15 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
           Gross_Amount_Without_Discount:totals.gross,
           Discount_Amount:totals.discount,
           Amount_Without_GST_Taxable:totals.taxable,
-          GST_Percent:isGstBill?totals.gstPct:0,
+          Tax_Type:isGstBill?totals.taxType:"",
+          CGST_Percent:isGstBill?totals.cgstRate:0,
+          SGST_Percent:isGstBill?totals.sgstRate:0,
+          IGST_Percent:isGstBill?totals.igstRate:0,
+          Total_GST_Percent:isGstBill?totals.gstRate:0,
+          GST_Percent:isGstBill?totals.gstRate:0,
+          CGST:isGstBill?totals.cgst:0,
+          SGST:isGstBill?totals.sgst:0,
+          IGST:isGstBill?totals.igst:0,
           GST_Amount:isGstBill?totals.gstAmount:0,
           Amount_With_GST:isGstBill?totals.final:0,
           Cash_No_Bill_Amount:isCash?totals.final:0,
@@ -2462,9 +2506,13 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
         {shown.length===0&&<div style={{padding:42,textAlign:"center",fontSize:13,color:T.muted}}>No orders in this billing view.</div>}
       </GlassCard>
       {billOrder&&<Modal title={`Generate Bill - ${billOrder.id}`} onClose={()=>setBillOrder(null)} wide>
-        <div style={{background:T.cardHi,border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:T.sub}}>Order Value: <b style={{color:T.text}}>{inr(billOrder.final)}</b> | Paid: <b style={{color:T.green}}>{inr(billOrder.advance||0)}</b> | Balance: <b style={{color:T.red}}>{inr(billOrder.balance||0)}</b></div>
+        <div style={{background:T.cardHi,border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:T.sub}}>Order Value: <b style={{color:T.text}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).final)}</b> | Paid: <b style={{color:T.green}}>{inr(paidFor(billOrder))}</b> | Balance: <b style={{color:T.red}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).balance)}</b></div>
         <FormRow cols={3}><Field label="Invoice No"><input value={billForm.invoiceNo} onChange={e=>setBillForm(f=>({...f,invoiceNo:e.target.value}))} /></Field><Field label="Invoice Date"><input type="date" value={billForm.date} onChange={e=>setBillForm(f=>({...f,date:e.target.value}))} /></Field><Field label="Place of Supply"><input value={billForm.place} onChange={e=>setBillForm(f=>({...f,place:e.target.value}))} /></Field></FormRow>
-        <FormRow cols={2}><Field label="Customer GSTIN"><input value={billForm.customerGstin} onChange={e=>setBillForm(f=>({...f,customerGstin:e.target.value.toUpperCase()}))} placeholder="Optional for B2C" /></Field><Field label="HSN / SAC"><input value={billForm.hsn} onChange={e=>setBillForm(f=>({...f,hsn:e.target.value}))} placeholder="Enter applicable HSN/SAC" /></Field></FormRow>
+        <FormRow cols={3}><Field label="Customer GSTIN"><input maxLength={15} value={billForm.customerGstin} onChange={e=>applyCustomerGstin(e.target.value)} placeholder="Optional for B2C" />{billGstinError(billForm.customerGstin)&&<div style={{fontSize:11,color:T.red,marginTop:4}}>{billGstinError(billForm.customerGstin)}</div>}</Field><Field label="HSN / SAC"><input value={billForm.hsn} onChange={e=>setBillForm(f=>({...f,hsn:e.target.value}))} placeholder="Enter applicable HSN/SAC" /></Field><Field label="Tax Type"><input disabled value={billForm.taxType||"Intra-State"} /></Field></FormRow>
+        <FormRow cols={4}><Field label="CGST %"><input type="number" disabled={billForm.taxType==="Inter-State"} value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).cgstRate} onChange={e=>setBillForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field><Field label="SGST %"><input type="number" disabled={billForm.taxType==="Inter-State"} value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).sgstRate} onChange={e=>setBillForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field><Field label="IGST %"><input type="number" disabled={billForm.taxType!=="Inter-State"} value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).igstRate} onChange={e=>setBillForm(f=>({...f,igstRate:e.target.value}))} /></Field><Field label="Total GST %"><input disabled value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).gstRate} /></Field></FormRow>
+        {(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).cgstRate+billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).sgstRate>18||billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).igstRate>18)&&<div style={{fontSize:12,color:T.red,marginBottom:10}}>Total GST cannot exceed 18%.</div>}
+        {billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).taxType!=="Inter-State"&&billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).cgstRate!==billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).sgstRate&&<div style={{fontSize:12,color:T.red,marginBottom:10}}>CGST and SGST must be equal.</div>}
+        <div style={{background:T.cardHi,border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:T.sub}}>Taxable: <b style={{color:T.text}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).taxable)}</b> | CGST: <b style={{color:T.green}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).cgst)}</b> | SGST: <b style={{color:T.green}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).sgst)}</b> | IGST: <b style={{color:T.green}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).igst)}</b> | Total GST: <b style={{color:T.green}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).gstAmount)}</b></div>
         <Field label="Customer Address"><textarea rows={2} value={billForm.customerAddress} onChange={e=>setBillForm(f=>({...f,customerAddress:e.target.value}))} /></Field>
         <Field label="Internal Notes"><textarea rows={2} value={billForm.notes} onChange={e=>setBillForm(f=>({...f,notes:e.target.value}))} /></Field>
         <div style={{display:"flex",gap:10,marginTop:18}}><SuccessBtn onClick={saveBill} disabled={savingBill}>{savingBill?"Processing...":"Generate & Download PDF"}</SuccessBtn><GhostBtn onClick={()=>setBillOrder(null)}>Cancel</GhostBtn></div>
@@ -2478,6 +2526,165 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
       </Modal>}
     </div>
   );
+}
+
+function PurchaseSession({ purchases, setPurchases, expenses=[], setExpenses }) {
+  const [filter,setFilter]=useState("all");
+  const [showAdd,setShowAdd]=useState(false);
+  const [editId,setEditId]=useState(null);
+  const [exportFrom,setExportFrom]=useState(todayStr().slice(0,7)+"-01");
+  const [exportTo,setExportTo]=useState(todayStr());
+  const blank={date:todayStr(),vendor:"",vendorGstin:"",invoiceNo:"",invoiceDate:todayStr(),place:"Karnataka",category:"Raw Material",item:"",hsn:"",qty:1,unit:"pcs",taxable:"",cgstRate:9,sgstRate:9,igstRate:0,taxType:"Intra-State",paid:""};
+  const [form,setForm]=useState(blank);
+  const gstinError=gstin=>{
+    const raw=String(gstin||"").trim().toUpperCase();
+    if(!raw)return "";
+    if(raw.length!==15)return "Vendor GSTIN must be exactly 15 characters";
+    if(!/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(raw))return "GSTIN format should be like 29ABCDE1234F1Z5";
+    return "";
+  };
+  const applyVendorGstin=value=>{
+    const gstin=String(value||"").toUpperCase();
+    const stateCode=gstin.slice(0,2);
+    setForm(f=>({
+      ...f,
+      vendorGstin:gstin,
+      ...(gstin.startsWith("29")?{taxType:"Intra-State",place:"Karnataka",igstRate:0,cgstRate:f.cgstRate||9,sgstRate:f.sgstRate||9}:{}),
+      ...(/^\d{2}$/.test(stateCode)&&stateCode!=="29"?{taxType:"Inter-State",place:"Inter-State",cgstRate:0,sgstRate:0,igstRate:f.igstRate||18}:{})
+    }));
+  };
+  const purchaseTotals=p=>{
+    const taxable=Number(p.taxable||0);
+    const isInter=p.taxType==="Inter-State";
+    const cgstRate=isInter?0:Number(p.cgstRate ?? (p.gstRate?Number(p.gstRate)/2:9));
+    const sgstRate=isInter?0:Number(p.sgstRate ?? (p.gstRate?Number(p.gstRate)/2:9));
+    const igstRate=isInter?Number(p.igstRate ?? p.gstRate ?? 18):0;
+    const gstRate=cgstRate+sgstRate+igstRate;
+    const cgst=Math.round(taxable*cgstRate/100);
+    const sgst=Math.round(taxable*sgstRate/100);
+    const igst=Math.round(taxable*igstRate/100);
+    const gstAmount=cgst+sgst+igst;
+    const total=taxable+gstAmount;
+    const paid=Number(p.paid||0);
+    const balance=Math.max(total-paid,0);
+    return {taxType:p.taxType||"Intra-State",taxable,gstRate,cgstRate,sgstRate,igstRate,gstAmount,cgst,sgst,igst,total,paid,balance};
+  };
+  const totals=purchases.reduce((acc,p)=>{ const t=purchaseTotals(p); acc.taxable+=t.taxable; acc.gst+=t.gstAmount; acc.total+=t.total; acc.paid+=t.paid; acc.balance+=t.balance; return acc; },{taxable:0,gst:0,total:0,paid:0,balance:0});
+  const shown=purchases.filter(p=>{
+    const t=purchaseTotals(p);
+    if(filter==="all")return true;
+    if(filter==="paid")return t.balance<=0;
+    if(filter==="pending")return t.balance>0;
+    return p.category==="Raw Material";
+  });
+  const save=()=>{
+    if(!form.vendor.trim()||!form.invoiceNo.trim()||!form.item.trim()||!form.taxable)return alert("Vendor, invoice number, item and taxable amount are required");
+    const gstError=gstinError(form.vendorGstin);
+    if(gstError)return alert(gstError);
+    const t=purchaseTotals(form);
+    if(t.taxType!=="Inter-State"&&t.cgstRate+t.sgstRate>18)return alert("CGST + SGST cannot exceed 18%");
+    if(t.taxType!=="Inter-State"&&t.cgstRate!==t.sgstRate)return alert("CGST and SGST must be equal");
+    if(t.taxType==="Inter-State"&&t.igstRate>18)return alert("IGST cannot exceed 18%");
+    const purchaseId=editId||`PUR${Date.now()}`;
+    const payload={...form,id:purchaseId,category:"Raw Material",vendor:form.vendor.trim(),vendorGstin:form.vendorGstin.trim().toUpperCase(),invoiceNo:form.invoiceNo.trim(),item:form.item.trim(),taxable:Number(form.taxable||0),cgstRate:t.cgstRate,sgstRate:t.sgstRate,igstRate:t.igstRate,gstRate:t.gstRate,paid:Number(form.paid||0),updatedAt:new Date().toISOString()};
+    const record=editId?payload:{createdAt:new Date().toISOString(),createdBy:"Management",...payload};
+    const total=purchaseTotals(record).total;
+    setPurchases(ps=>editId?ps.map(p=>p.id===editId?{...p,...record}:p):[record,...ps]);
+    setExpenses?.(es=>{
+      const expense={id:`EXP-${purchaseId}`,date:record.date||todayStr(),cat:"Raw Material",name:"Raw Material",amount:total,reason:record.item,desc:record.item,purchaseId,invoiceNo:record.invoiceNo,vendor:record.vendor,gstin:record.vendorGstin,gstAmount:purchaseTotals(record).gstAmount,taxable:purchaseTotals(record).taxable,amountWithGst:total,createdBy:"Purchase",createdAt:record.createdAt||new Date().toISOString()};
+      return es.some(e=>e.purchaseId===purchaseId||e.id===expense.id)?es.map(e=>(e.purchaseId===purchaseId||e.id===expense.id)?{...e,...expense}:e):[expense,...es];
+    });
+    setForm(blank);
+    setEditId(null);
+    setShowAdd(false);
+  };
+  const openEdit=p=>{
+    const merged={...blank,...p};
+    const t=purchaseTotals(merged);
+    setEditId(p.id);
+    setForm({...merged,taxable:String(p.taxable||""),cgstRate:t.cgstRate,sgstRate:t.sgstRate,igstRate:t.igstRate,gstRate:t.gstRate,paid:String(p.paid||"")});
+    setShowAdd(true);
+  };
+  const exportPurchasesCsv=()=>{
+    const rows=purchases.filter(p=>inDateRange(p.invoiceDate||p.date,exportFrom,exportTo)).map(p=>{
+      const t=purchaseTotals(p);
+      return {
+        Purchase_Date:p.date||"",
+        Invoice_Date:p.invoiceDate||"",
+        Purchase_ID:p.id||"",
+        Vendor_Name:p.vendor||"",
+        Vendor_GSTIN:p.vendorGstin||"",
+        Supplier_Invoice_No:p.invoiceNo||"",
+        Place_Of_Supply:p.place||"",
+        Category:"Raw Material",
+        Item_Description:p.item||"",
+        HSN_SAC:p.hsn||"",
+        Quantity:p.qty||"",
+        Unit:p.unit||"",
+        Tax_Type:p.taxType||"",
+        Amount_Without_GST_Taxable:t.taxable,
+        CGST_Percent:t.cgstRate,
+        SGST_Percent:t.sgstRate,
+        IGST_Percent:t.igstRate,
+        Total_GST_Percent:t.gstRate,
+        CGST:t.cgst,
+        SGST:t.sgst,
+        IGST:t.igst,
+        Total_GST:t.gstAmount,
+        Amount_With_GST:t.total,
+        Paid_Amount:t.paid,
+        Balance_Amount:t.balance,
+        Payment_Status:t.balance<=0?"Paid":"Pending",
+        Created_By:p.createdBy||"",
+        Created_At:p.createdAt||"",
+        Raw_Record:JSON.stringify(p)
+      };
+    });
+    downloadCsv(`smartcovering-purchases-${exportFrom||"all"}-to-${exportTo||"all"}.csv`,rows);
+  };
+  return <div>
+    <SectionTitle action={<PrimaryBtn onClick={()=>{setEditId(null);setForm(blank);setShowAdd(true);}}>+ Add Purchase</PrimaryBtn>}>Purchase</SectionTitle>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:18}}>
+      <StatKPI label="Purchase Value" value={inr(totals.total)} sub="with GST" accent={T.blue} />
+      <StatKPI label="Taxable Value" value={inr(totals.taxable)} sub="without GST" accent={T.teal} />
+      <StatKPI label="Input GST" value={inr(totals.gst)} sub="CGST + SGST + IGST" accent={T.green} />
+      <StatKPI label="Paid" value={inr(totals.paid)} accent={T.purple} />
+      <StatKPI label="Balance" value={inr(totals.balance)} accent={T.red} />
+    </div>
+    <GlassCard style={{marginBottom:18}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+        <div><div style={{fontWeight:800,color:T.text}}>Purchase control</div><div style={{fontSize:12,color:T.muted,marginTop:3}}>Record raw material purchases with GST. Saved purchases also appear automatically in Expenses.</div></div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["all","All"],["pending","Pending"],["paid","Paid"],["Raw Material","Raw Material"]].map(([id,label])=><button key={id} onClick={()=>setFilter(id)} style={{border:`1px solid ${filter===id?T.blue:T.border}`,background:filter===id?T.blue:T.cardHi,color:filter===id?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div>
+      </div>
+    </GlassCard>
+    <GlassCard style={{marginBottom:18}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"end",flexWrap:"wrap"}}>
+        <div><div style={{fontWeight:800,color:T.text}}>Export purchase CSV</div><div style={{fontSize:12,color:T.muted,marginTop:3}}>Choose invoice date range and download purchase data for CA audit and GST input check.</div></div>
+        <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
+          <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
+          <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
+          <PrimaryBtn onClick={exportPurchasesCsv}>Export CSV</PrimaryBtn>
+        </div>
+      </div>
+    </GlassCard>
+    <GlassCard style={{padding:0}}>
+      <Table headers={["Invoice","Vendor","Item","Taxable","GST","Total","Paid","Balance","Status","Action"]}>
+        {shown.map(p=>{ const t=purchaseTotals(p); const gstBreakup=t.taxType==="Inter-State"?`IGST ${t.igstRate}%`:`CGST ${t.cgstRate}% + SGST ${t.sgstRate}%`; return <TR key={p.id}><TD bold color={T.blue}>{p.invoiceNo}<div style={{fontSize:11,color:T.muted}}>{p.invoiceDate||p.date}</div></TD><TD bold>{p.vendor}<div style={{fontSize:11,color:T.muted}}>{p.vendorGstin||"-"}</div></TD><TD>{p.item}<div style={{fontSize:11,color:T.muted}}>Raw Material | HSN {p.hsn||"-"}</div></TD><TD bold>{inr(t.taxable)}</TD><TD color={T.green} bold>{inr(t.gstAmount)}<div style={{fontSize:11,color:T.muted}}>{gstBreakup}</div></TD><TD bold color={T.blue}>{inr(t.total)}</TD><TD color={T.purple} bold>{inr(t.paid)}</TD><TD color={t.balance>0?T.red:T.green} bold>{inr(t.balance)}</TD><TD><Pill label={t.balance>0?"Pending":"Paid"} color={t.balance>0?T.red:T.green} /></TD><TD><EditBtn onClick={()=>openEdit(p)}>Edit</EditBtn></TD></TR>; })}
+      </Table>
+      {shown.length===0&&<div style={{padding:42,textAlign:"center",fontSize:13,color:T.muted}}>No purchase records in this view.</div>}
+    </GlassCard>
+    {showAdd&&<Modal title={editId?"Edit Purchase":"Add Purchase"} onClose={()=>{setShowAdd(false);setEditId(null);setForm(blank);}} wide>
+      <FormRow cols={3}><Field label="Purchase Date"><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></Field><Field label="Invoice Date"><input type="date" value={form.invoiceDate} onChange={e=>setForm(f=>({...f,invoiceDate:e.target.value}))} /></Field><Field label="Supplier Invoice No *"><input value={form.invoiceNo} onChange={e=>setForm(f=>({...f,invoiceNo:e.target.value}))} /></Field></FormRow>
+      <FormRow cols={3}><Field label="Vendor Name *"><input value={form.vendor} onChange={e=>setForm(f=>({...f,vendor:e.target.value}))} /></Field><Field label="Vendor GSTIN"><input maxLength={15} value={form.vendorGstin} onChange={e=>applyVendorGstin(e.target.value)} placeholder="29ABCDE1234F1Z5" />{gstinError(form.vendorGstin)&&<div style={{fontSize:11,color:T.red,marginTop:4}}>{gstinError(form.vendorGstin)}</div>}</Field><Field label="Place of Supply"><input value={form.place} onChange={e=>setForm(f=>({...f,place:e.target.value}))} /></Field></FormRow>
+      <FormRow cols={4}><Field label="Category"><input disabled value="Raw Material" /></Field><Field label="Item / Description *"><input value={form.item} onChange={e=>setForm(f=>({...f,item:e.target.value}))} /></Field><Field label="HSN / SAC"><input value={form.hsn} onChange={e=>setForm(f=>({...f,hsn:e.target.value}))} /></Field><Field label="Tax Type"><input disabled value={form.taxType||"Intra-State"} /></Field></FormRow>
+      <FormRow cols={5}><Field label="Qty"><input type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))} /></Field><Field label="Taxable Amount *"><input type="number" value={form.taxable} onChange={e=>setForm(f=>({...f,taxable:e.target.value}))} /></Field><Field label="CGST %"><input type="number" disabled={form.taxType==="Inter-State"} value={purchaseTotals(form).cgstRate} onChange={e=>setForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field><Field label="SGST %"><input type="number" disabled={form.taxType==="Inter-State"} value={purchaseTotals(form).sgstRate} onChange={e=>setForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field></FormRow>
+      <FormRow cols={3}><Field label="IGST %"><input type="number" disabled={form.taxType!=="Inter-State"} value={purchaseTotals(form).igstRate} onChange={e=>setForm(f=>({...f,igstRate:e.target.value}))} /></Field><Field label="Total GST %"><input disabled value={purchaseTotals(form).gstRate} /></Field><Field label="Paid Amount"><input type="number" value={form.paid} onChange={e=>setForm(f=>({...f,paid:e.target.value}))} /></Field></FormRow>
+      {(purchaseTotals(form).cgstRate+purchaseTotals(form).sgstRate>18||purchaseTotals(form).igstRate>18)&&<div style={{fontSize:12,color:T.red,marginBottom:10}}>Total GST cannot exceed 18%.</div>}
+      {purchaseTotals(form).taxType!=="Inter-State"&&purchaseTotals(form).cgstRate!==purchaseTotals(form).sgstRate&&<div style={{fontSize:12,color:T.red,marginBottom:10}}>CGST and SGST must be equal.</div>}
+      <div style={{background:T.cardHi,border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:T.sub}}>Taxable: <b style={{color:T.text}}>{inr(purchaseTotals(form).taxable)}</b> | CGST: <b style={{color:T.green}}>{inr(purchaseTotals(form).cgst)}</b> | SGST: <b style={{color:T.green}}>{inr(purchaseTotals(form).sgst)}</b> | IGST: <b style={{color:T.green}}>{inr(purchaseTotals(form).igst)}</b> | Total GST: <b style={{color:T.green}}>{inr(purchaseTotals(form).gstAmount)}</b> | Total: <b style={{color:T.blue}}>{inr(purchaseTotals(form).total)}</b> | Balance: <b style={{color:purchaseTotals(form).balance>0?T.red:T.green}}>{inr(purchaseTotals(form).balance)}</b></div>
+      <div style={{display:"flex",gap:10,marginTop:18}}><SuccessBtn onClick={save}>{editId?"Update Purchase":"Save Purchase"}</SuccessBtn><GhostBtn onClick={()=>{setShowAdd(false);setEditId(null);setForm(blank);}}>Cancel</GhostBtn></div>
+    </Modal>}
+  </div>;
 }
 
 function DailyExpenses({ expenses, setExpenses }) {
@@ -4363,6 +4570,7 @@ const NAV=[
   {id:"inventoryDashboard", icon:"", label:"Inventory"},
   {id:"production", icon:"", label:"Production"},
   {id:"billing", icon:"", label:"Billing"},
+  {id:"purchase", icon:"", label:"Purchase"},
   {id:"dailyExpenses", icon:"", label:"Expenses"},
   {id:"leads",      icon:"", label:"Lead Management"},
   {id:"followups",  icon:"", label:"Follow-ups"},
@@ -4373,6 +4581,10 @@ const NAV=[
 function SmartAssistant({ leads, setLeads, orders, followups, setFollowups, salesmen, expenses, setExpenses, smartInventory, role, canWrite }) {
   const [open,setOpen]=useState(false);
   const [input,setInput]=useState("");
+  const [buttonPos,setButtonPos]=useState({right:26,bottom:26});
+  const [drag,setDrag]=useState(null);
+  const [suppressClick,setSuppressClick]=useState(false);
+  const dragRef=useRef(null);
   const [messages,setMessages]=useState([
     {from:"bot",text:"Ask me about leads, missed follow-ups, production, inventory, expenses, or say: add lead name Rahul mobile 9876543210 product Mesh location Bengaluru salesman Amit."}
   ]);
@@ -4484,18 +4696,60 @@ function SmartAssistant({ leads, setLeads, orders, followups, setFollowups, sale
     setInput("");
     setTimeout(()=>addBot(answerQuery(text)),80);
   };
+  const startDrag=e=>{
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setSuppressClick(false);
+    dragRef.current={x:e.clientX,y:e.clientY,right:buttonPos.right,bottom:buttonPos.bottom,moved:false};
+    setDrag(true);
+  };
+  const moveDrag=e=>{
+    const current=dragRef.current;
+    if(!current)return;
+    const dx=e.clientX-current.x;
+    const dy=e.clientY-current.y;
+    const moved=Math.abs(dx)>3||Math.abs(dy)>3;
+    const nextRight=Math.max(12,Math.min(window.innerWidth-82,current.right-dx));
+    const nextBottom=Math.max(12,Math.min(window.innerHeight-82,current.bottom-dy));
+    dragRef.current={...current,moved:current.moved||moved};
+    setButtonPos({right:nextRight,bottom:nextBottom});
+  };
+  const endDrag=e=>{
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    const wasMoved=dragRef.current?.moved;
+    dragRef.current=null;
+    setSuppressClick(Boolean(wasMoved));
+    setDrag(null);
+  };
+  const panelRight=Math.max(12,Math.min(buttonPos.right,window.innerWidth-440));
+  const panelBottom=Math.min(buttonPos.bottom+84,window.innerHeight-120);
   return <>
-    <button onClick={()=>setOpen(o=>!o)} style={{position:"fixed",right:24,bottom:24,zIndex:1500,border:0,borderRadius:999,background:T.blue,color:"#fff",padding:"13px 18px",boxShadow:"0 16px 40px rgba(15,23,42,.22)",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Smart Assistant</button>
-    {open&&<div style={{position:"fixed",right:24,bottom:82,zIndex:1500,width:"min(420px,calc(100vw - 32px))",height:"min(560px,calc(100vh - 120px))",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 24px 80px rgba(15,23,42,.24)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      <div style={{padding:14,borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:T.surf}}>
-        <div><div style={{fontWeight:900,color:T.text}}>SmartCovering Assistant</div><div style={{fontSize:11,color:T.muted}}>{canWrite?"Can check and add ERP records":"Check-only access"}</div></div>
-        <button onClick={()=>setOpen(false)} style={{border:0,background:T.cardHi,borderRadius:8,width:30,height:30,cursor:"pointer",color:T.muted}}>x</button>
+    <button aria-label="Open SmartCovering Assistant" title="Click and drag Smart Assistant" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={()=>{if(suppressClick){setSuppressClick(false);return;} setOpen(o=>!o);}} style={{position:"fixed",right:buttonPos.right,bottom:buttonPos.bottom,zIndex:1500,width:70,height:70,border:0,borderRadius:"50%",background:"linear-gradient(145deg,#0f766e,#2563eb)",boxShadow:"0 18px 45px rgba(37,99,235,.30), 0 0 0 7px rgba(37,99,235,.10)",cursor:drag?"grabbing":"grab",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",padding:0,touchAction:"none",userSelect:"none"}}>
+      <div style={{width:48,height:42,borderRadius:16,background:"#f8fafc",border:"2px solid rgba(255,255,255,.85)",boxShadow:"inset 0 -7px 0 rgba(37,99,235,.10)",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{position:"absolute",top:-7,left:"50%",width:10,height:10,borderRadius:"50%",background:"#38bdf8",transform:"translateX(-50%)",boxShadow:"0 -8px 0 -3px #0f766e"}} />
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:"#0f172a",boxShadow:"16px 0 0 #0f172a"}} />
+        </div>
+        <div style={{position:"absolute",bottom:8,left:"50%",width:17,height:5,borderRadius:"0 0 9px 9px",borderBottom:"3px solid #0f766e",transform:"translateX(-50%)"}} />
       </div>
-      <div style={{flex:1,overflowY:"auto",padding:14,display:"grid",gap:10,alignContent:"start"}}>
-        {messages.map((m,i)=><div key={i} style={{justifySelf:m.from==="user"?"end":"start",maxWidth:"88%",whiteSpace:"pre-line",background:m.from==="user"?T.blue:T.cardHi,color:m.from==="user"?"#fff":T.text,border:`1px solid ${m.from==="user"?T.blue:T.border}`,borderRadius:10,padding:"9px 11px",fontSize:13,lineHeight:1.45}}>{m.text}</div>)}
+    </button>
+    {open&&<div style={{position:"fixed",right:panelRight,bottom:panelBottom,zIndex:1500,width:"min(420px,calc(100vw - 32px))",height:"min(585px,calc(100vh - 132px))",background:T.card,border:`1px solid ${T.border}`,borderRadius:18,boxShadow:"0 30px 90px rgba(15,23,42,.28)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:16,borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:"linear-gradient(135deg,#f8fafc,#eef6ff)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:44,height:38,borderRadius:14,background:"linear-gradient(145deg,#0f766e,#2563eb)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 10px 25px rgba(37,99,235,.22)"}}>
+            <div style={{width:28,height:23,borderRadius:9,background:"#fff",position:"relative"}}>
+              <span style={{position:"absolute",top:8,left:6,width:5,height:5,borderRadius:"50%",background:"#0f172a",boxShadow:"11px 0 0 #0f172a"}} />
+              <span style={{position:"absolute",bottom:5,left:9,width:10,height:3,borderRadius:999,background:"#0f766e"}} />
+            </div>
+          </div>
+          <div><div style={{fontWeight:900,color:T.text}}>SmartCovering Assistant</div><div style={{fontSize:11,color:T.muted}}>{canWrite?"Can check and add ERP records":"Check-only access"}</div></div>
+        </div>
+        <button onClick={()=>setOpen(false)} style={{border:0,background:T.cardHi,borderRadius:10,width:32,height:32,cursor:"pointer",color:T.muted,fontWeight:800}}>x</button>
       </div>
-      <form onSubmit={submit} style={{padding:12,borderTop:`1px solid ${T.border}`,display:"flex",gap:8}}>
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask or add lead/expense..." style={{flex:1}} />
+      <div style={{flex:1,overflowY:"auto",padding:16,display:"grid",gap:10,alignContent:"start",background:"linear-gradient(180deg,#ffffff,#f8fafc)"}}>
+        {messages.map((m,i)=><div key={i} style={{justifySelf:m.from==="user"?"end":"start",maxWidth:"88%",whiteSpace:"pre-line",background:m.from==="user"?T.blue:T.cardHi,color:m.from==="user"?"#fff":T.text,border:`1px solid ${m.from==="user"?T.blue:T.border}`,borderRadius:m.from==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",padding:"10px 12px",fontSize:13,lineHeight:1.45,boxShadow:"0 8px 18px rgba(15,23,42,.06)"}}>{m.text}</div>)}
+      </div>
+      <form onSubmit={submit} style={{padding:14,borderTop:`1px solid ${T.border}`,display:"flex",gap:8,background:T.card}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask or add lead/expense..." style={{flex:1,borderRadius:999,padding:"10px 14px"}} />
         <PrimaryBtn small>Send</PrimaryBtn>
       </form>
     </div>}
@@ -4550,6 +4804,10 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("smartcovering_bills"))||[]; }
     catch { return []; }
   });
+  const [purchases,setPurchases]=useState(()=>{
+    try { return JSON.parse(localStorage.getItem("smartcovering_purchases"))||[]; }
+    catch { return []; }
+  });
   const [salesmen,setSalesmen]=useState(()=>{
     try { return JSON.parse(localStorage.getItem("smartcovering_salesmen"))||SALESMEN; }
     catch { return SALESMEN; }
@@ -4560,7 +4818,7 @@ export default function App() {
   const sharedStateReadyRef=useRef(false);
   const sharedStateSaveTimerRef=useRef(null);
   const currentSharedState=()=>({
-    leads, orders, followups, payments, salesmen, channelPartners, bills, smartInventory, expenses
+    leads, orders, followups, payments, salesmen, channelPartners, bills, purchases, smartInventory, expenses
   });
 
   useEffect(()=>{ localStorage.setItem("smartcovering_leads",JSON.stringify(leads)); },[leads]);
@@ -4570,6 +4828,7 @@ export default function App() {
   useEffect(()=>{ localStorage.setItem("smartcovering_salesmen",JSON.stringify(salesmen)); },[salesmen]);
   useEffect(()=>{ localStorage.setItem("smartcovering_channel_partners",JSON.stringify(channelPartners)); },[channelPartners]);
   useEffect(()=>{ localStorage.setItem("smartcovering_bills",JSON.stringify(bills)); },[bills]);
+  useEffect(()=>{ localStorage.setItem("smartcovering_purchases",JSON.stringify(purchases)); },[purchases]);
   useEffect(()=>{ localStorage.setItem("smartcovering_smart_inventory",JSON.stringify(smartInventory)); },[smartInventory]);
   useEffect(()=>{ localStorage.setItem("smartcovering_expenses",JSON.stringify(expenses)); },[expenses]);
   useEffect(()=>{
@@ -4585,6 +4844,7 @@ export default function App() {
       if(Array.isArray(state.salesmen))setSalesmen(state.salesmen);
       if(Array.isArray(state.channelPartners))setChannelPartners(state.channelPartners);
       if(Array.isArray(state.bills))setBills(state.bills);
+      if(Array.isArray(state.purchases))setPurchases(state.purchases);
       if(state.smartInventory&&typeof state.smartInventory==="object")setSmartInventory(state.smartInventory);
       if(Array.isArray(state.expenses))setExpenses(state.expenses);
       sharedStateReadyRef.current=true;
@@ -4601,7 +4861,7 @@ export default function App() {
       saveSharedAppState(currentSharedState()).catch(()=>{});
     },700);
     return ()=>clearTimeout(sharedStateSaveTimerRef.current);
-  },[leads,orders,followups,payments,salesmen,channelPartners,bills,smartInventory,expenses]);
+  },[leads,orders,followups,payments,salesmen,channelPartners,bills,purchases,smartInventory,expenses]);
   useEffect(()=>{
     const timer=setInterval(()=>setHeaderClock(formatHeaderClock()),1000);
     return ()=>clearInterval(timer);
@@ -4616,6 +4876,7 @@ export default function App() {
         if(e.key==="smartcovering_salesmen"&&e.newValue)setSalesmen(JSON.parse(e.newValue));
         if(e.key==="smartcovering_channel_partners"&&e.newValue)setChannelPartners(JSON.parse(e.newValue));
         if(e.key==="smartcovering_bills"&&e.newValue)setBills(JSON.parse(e.newValue));
+        if(e.key==="smartcovering_purchases"&&e.newValue)setPurchases(JSON.parse(e.newValue));
         if(e.key==="smartcovering_smart_inventory"&&e.newValue)setSmartInventory(JSON.parse(e.newValue));
         if(e.key==="smartcovering_expenses"&&e.newValue)setExpenses(JSON.parse(e.newValue));
       } catch {}
@@ -4656,7 +4917,7 @@ export default function App() {
   if(!role)return <><style>{css}</style><LoginScreen salesmen={salesmen} channelPartners={channelPartners} onLogin={(nextRole,entityId=null,password="")=>{setRole(nextRole);setActiveSalesmanId(nextRole==="salesman"?entityId:null);setActivePartnerId(nextRole==="channelPartner"?entityId:null);setAuthPassword(password);setMod(nextRole==="productionTeam"?"production":"dashboard")}} /></>;
 
   const GUARD = fn => isManager ? (()=>{}) : fn;
-  const visibleNav=isProductionTeam?NAV.filter(item=>item.id==="production"):(isPartner?NAV.filter(item=>item.id==="dashboard"):(isSalesman?NAV.filter(item=>!["channelPartners","inventoryDashboard","production","billing","dailyExpenses","salesmen","reports"].includes(item.id)):NAV));
+  const visibleNav=isProductionTeam?NAV.filter(item=>item.id==="production"):(isPartner?NAV.filter(item=>item.id==="dashboard"):(isSalesman?NAV.filter(item=>!["channelPartners","inventoryDashboard","production","billing","purchase","dailyExpenses","salesmen","reports"].includes(item.id)):NAV));
 
   const moduleMap = {
     dashboard: isPartner
@@ -4668,6 +4929,7 @@ export default function App() {
     inventoryDashboard: <InventoryDashboard smartInventory={smartInventory} setSmartInventory={setSmartInventory} />,
     production: <ProductionBoard orders={visibleOrders} setOrders={setOrders} partners={channelPartners} setPartners={setChannelPartners} smartInventory={smartInventory} setSmartInventory={setSmartInventory} canManageApproval={!isProductionTeam} canManageInstallation={!isProductionTeam} />,
     billing: <BillingSession orders={visibleOrders} setOrders={setOrders} payments={visiblePayments} setPayments={setPayments} bills={bills} setBills={setBills} leads={leads} setLeads={setLeads} partners={channelPartners} setPartners={setChannelPartners} />,
+    purchase: <PurchaseSession purchases={purchases} setPurchases={setPurchases} expenses={expenses} setExpenses={setExpenses} />,
     dailyExpenses: <DailyExpenses expenses={expenses} setExpenses={setExpenses} />,
     leads:     <Leads leads={visibleLeads} setLeads={GUARD(setLeads)} orders={orders} setOrders={GUARD(setOrders)} payments={payments} setPayments={GUARD(setPayments)} followups={visibleFollowups} setFollowups={GUARD(setFollowups)} salesmen={salesmen} partners={channelPartners} setPartners={GUARD(setChannelPartners)} isManager={isManager} smartInventory={smartInventory} setSmartInventory={setSmartInventory} />,
     followups: <FollowUps followups={visibleFollowups} setFollowups={GUARD(setFollowups)} leads={activeWorkflowLeads} setLeads={setLeads} salesmen={salesmen} isManager={isManager} canEditReason={isSalesman} />,
@@ -4706,7 +4968,7 @@ export default function App() {
             {visibleNav.map(item=>{
               const active=mod===item.id;
               const hasAlert=item.id==="alerts"&&alertCount>0;
-              const navAccent=["billing","dailyExpenses"].includes(item.id)?T.blue:T.amber;
+              const navAccent=["billing","purchase","dailyExpenses"].includes(item.id)?T.blue:T.amber;
               return (
                 <button key={item.id} onClick={()=>setMod(item.id)} style={{
                   width:"100%",display:"flex",alignItems:"center",gap:10,
