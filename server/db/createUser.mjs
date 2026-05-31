@@ -28,6 +28,7 @@ const [user] = await query(
       password_hash = excluded.password_hash,
       role = excluded.role,
       linked_entity_id = excluded.linked_entity_id,
+      session_version = users.session_version + 1,
       active = true
     returning id, name, email, login_id, role, linked_entity_id
   `,
