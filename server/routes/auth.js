@@ -11,7 +11,8 @@ const publicUser = user => ({
   role: user.role,
   email: user.email,
   loginId: user.login_id || user.email,
-  linkedEntityId: user.linked_entity_id || null
+  linkedEntityId: user.linked_entity_id || null,
+  sessionVersion: Number(user.session_version || 0)
 });
 
 const requestMeta = req => ({
@@ -58,6 +59,7 @@ async function migrateLegacyAppUser({ userLogin, password, role }) {
        password_hash = excluded.password_hash,
        role = excluded.role,
        linked_entity_id = excluded.linked_entity_id,
+       session_version = users.session_version + 1,
        active = true
      returning *`,
     [name, email, userLogin, passwordHash, role, linkedEntityId || null]
@@ -96,19 +98,8 @@ authRouter.post("/login", async (req, res, next) => {
   }
 });
 
-authRouter.get("/me", async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace(/^Bearer\s+/i, "") || Object.fromEntries(String(req.headers.cookie || "").split(";").map(part => {
-      const index = part.indexOf("=");
-      return index === -1 ? ["", ""] : [decodeURIComponent(part.slice(0, index).trim()), decodeURIComponent(part.slice(index + 1).trim())];
-    })).smartcovering_session;
-    if (!token) return res.status(401).json({ error: "Unauthorized" });
-    const jwt = await import("jsonwebtoken");
-    const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
-    res.json({ user: { id: decoded.sub, name: decoded.name, role: decoded.role, loginId: decoded.loginId, linkedEntityId: decoded.linkedEntityId || null } });
-  } catch (error) {
-    res.status(401).json({ error: "Unauthorized" });
-  }
+authRouter.get("/me", requireAuth, async (req, res) => {
+  res.json({ user: { id: req.user.sub, name: req.user.name, role: req.user.role, loginId: req.user.loginId, linkedEntityId: req.user.linkedEntityId || null } });
 });
 
 authRouter.post("/logout", (_req, res) => {
@@ -127,7 +118,7 @@ authRouter.post("/change-password", requireAuth, async (req, res, next) => {
       return res.status(401).json({ error: "Current password is incorrect" });
     }
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await query("update users set password_hash = $1 where id = $2", [passwordHash, user.id]);
+    await query("update users set password_hash = $1, session_version = session_version + 1 where id = $2", [passwordHash, user.id]);
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -159,8 +150,9 @@ authRouter.post("/users", requireAuth, async (req, res, next) => {
          password_hash = excluded.password_hash,
          role = excluded.role,
          linked_entity_id = excluded.linked_entity_id,
+         session_version = users.session_version + 1,
          active = true
-       returning id, name, email, login_id, role, linked_entity_id`,
+       returning id, name, email, login_id, role, linked_entity_id, session_version`,
       [String(name).trim(), email, userLogin, passwordHash, role, linkedEntityId ? String(linkedEntityId) : null]
     );
     res.json({ ok: true, user: publicUser(users[0]) });
