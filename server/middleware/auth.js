@@ -1,8 +1,16 @@
 import jwt from "jsonwebtoken";
+import { query } from "../db/pool.js";
 
 export function signUser(user) {
   return jwt.sign(
-    { sub: user.id, role: user.role, name: user.name, loginId: user.login_id || user.email, linkedEntityId: user.linked_entity_id || null },
+    {
+      sub: user.id,
+      role: user.role,
+      name: user.name,
+      loginId: user.login_id || user.email,
+      linkedEntityId: user.linked_entity_id || null,
+      sessionVersion: Number(user.session_version || 0)
+    },
     process.env.JWT_SECRET,
     { expiresIn: "12h" }
   );
@@ -32,14 +40,24 @@ export function tokenFromRequest(req) {
   return parseCookies(req).smartcovering_session || "";
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const token = tokenFromRequest(req);
   if (!token) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const rows = await query(
+      "select id, active, session_version from users where id = $1 limit 1",
+      [decoded.sub]
+    );
+    const user = rows[0];
+    if (!user?.active || Number(user.session_version || 0) !== Number(decoded.sessionVersion)) {
+      return res.status(401).json({ error: "Session expired. Please login again." });
+    }
+    req.user = decoded;
     next();
-  } catch {
+  } catch (error) {
+    console.error("Authentication failed", error);
     res.status(401).json({ error: "Invalid or expired token" });
   }
 }
