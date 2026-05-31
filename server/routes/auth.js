@@ -90,7 +90,7 @@ authRouter.post("/login", async (req, res, next) => {
     const token = signUser(user);
     await logLoginAttempt(req, { loginId: userLogin, role: user.role, success: true, userId: user.id });
     res.cookie("smartcovering_session", token, cookieOptions());
-    res.json({ ok: true, user: publicUser(user) });
+    res.json({ ok: true, token, user: publicUser(user) });
   } catch (error) {
     next(error);
   }
@@ -114,6 +114,24 @@ authRouter.get("/me", async (req, res) => {
 authRouter.post("/logout", (_req, res) => {
   res.clearCookie("smartcovering_session", { path: "/" });
   res.json({ ok: true });
+});
+
+authRouter.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: "Current password and new password are required" });
+    if (String(newPassword).length < 8) return res.status(400).json({ error: "New password must be at least 8 characters" });
+    const rows = await query("select * from users where id = $1 and active = true limit 1", [req.user.sub]);
+    const user = rows[0];
+    if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await query("update users set password_hash = $1 where id = $2", [passwordHash, user.id]);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 authRouter.post("/users", requireAuth, async (req, res, next) => {
