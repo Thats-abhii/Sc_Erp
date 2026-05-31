@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { query } from "../db/pool.js";
-import { cookieOptions, signUser } from "../middleware/auth.js";
+import { cookieOptions, requireAuth, signUser } from "../middleware/auth.js";
 
 export const authRouter = Router();
 
@@ -114,4 +114,39 @@ authRouter.get("/me", async (req, res) => {
 authRouter.post("/logout", (_req, res) => {
   res.clearCookie("smartcovering_session", { path: "/" });
   res.json({ ok: true });
+});
+
+authRouter.post("/users", requireAuth, async (req, res, next) => {
+  try {
+    if (!["management", "manager", "operator"].includes(req.user?.role)) {
+      return res.status(403).json({ error: "Management access required" });
+    }
+    const { name, loginId, password, role, linkedEntityId } = req.body || {};
+    const userLogin = String(loginId || "").trim().toLowerCase();
+    if (!name || !userLogin || !password || !role) {
+      return res.status(400).json({ error: "Name, login ID, password and role are required" });
+    }
+    if (!["management", "salesman", "production", "channel_partner", "manager", "operator"].includes(role)) {
+      return res.status(400).json({ error: "Invalid role" });
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    const email = `${userLogin}@smartcovering.local`;
+    const users = await query(
+      `insert into users (name, email, login_id, password_hash, role, linked_entity_id, active)
+       values ($1, $2, $3, $4, $5, $6, true)
+       on conflict (email)
+       do update set
+         name = excluded.name,
+         login_id = excluded.login_id,
+         password_hash = excluded.password_hash,
+         role = excluded.role,
+         linked_entity_id = excluded.linked_entity_id,
+         active = true
+       returning id, name, email, login_id, role, linked_entity_id`,
+      [String(name).trim(), email, userLogin, passwordHash, role, linkedEntityId ? String(linkedEntityId) : null]
+    );
+    res.json({ ok: true, user: publicUser(users[0]) });
+  } catch (error) {
+    next(error);
+  }
 });

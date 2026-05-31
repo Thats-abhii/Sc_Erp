@@ -93,6 +93,7 @@ const authRequest = async (path, options={}) => {
 const loginToBackend = payload => authRequest("/api/auth/login", { method:"POST", body:JSON.stringify(payload) });
 const logoutFromBackend = () => authRequest("/api/auth/logout", { method:"POST" }).catch(()=>{});
 const getBackendUser = () => authRequest("/api/auth/me");
+const createBackendAccessUser = payload => authRequest("/api/auth/users", { method:"POST", body:JSON.stringify(payload) });
 
 //  HELPERS 
 const inr = n => new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:0}).format(n);
@@ -3040,7 +3041,7 @@ function Salesmen({ leads, setLeads, followups, setFollowups, orders, payments, 
     try { return JSON.parse(localStorage.getItem("smartcovering_reassignment_logs"))||[]; }
     catch { return []; }
   });
-  const addSalesman=()=>{
+  const addSalesman=async ()=>{
     const nameError=validatePersonName(form.name);
     if(nameError)return alert(nameError);
     const mobileError=validateMobile(form.mobile);
@@ -3051,7 +3052,13 @@ function Salesmen({ leads, setLeads, followups, setFollowups, orders, payments, 
     if(salesmen.some(s=>s.loginId?.toLowerCase()===form.loginId.trim().toLowerCase()))return alert("This login ID is already used");
     const initials=form.name.split(" ").filter(Boolean).map(p=>p[0]).join("").slice(0,2).toUpperCase()||"SM";
     const colors=[T.blue,T.green,T.orange,T.purple,T.teal,T.amber,T.red];
-    setSalesmen(list=>[...list,{...form,name:form.name.trim(),mobile:normalizeMobile(form.mobile),email:form.email.trim().toLowerCase(),loginId:form.loginId.trim(),password:form.password.trim(),id:Date.now(),initials,joining:todayStr(),color:colors[list.length%colors.length]}]);
+    const id=Date.now();
+    try {
+      await createBackendAccessUser({name:form.name.trim(),loginId:form.loginId.trim(),password:form.password.trim(),role:"salesman",linkedEntityId:id});
+    } catch (error) {
+      return alert(error.message||"Could not create salesman login");
+    }
+    setSalesmen(list=>[...list,{...form,name:form.name.trim(),mobile:normalizeMobile(form.mobile),email:form.email.trim().toLowerCase(),loginId:form.loginId.trim(),password:"",id,initials,joining:todayStr(),color:colors[list.length%colors.length]}]);
     setForm(blankSalesman);
     setShowAdd(false);
   };
@@ -3385,7 +3392,7 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
 
   const openAddPartner=()=>{ setPartnerForm(blankPartner); setSelected(null); setShowPartner(true); };
   const openEditPartner=p=>{ setPartnerForm({name:p.name,owner:p.owner,mobile:p.mobile,city:p.city,category:p.category,loginId:p.loginId||"",password:p.password||""}); setSelected(p); setShowPartner(true); };
-  const savePartner=()=>{
+  const savePartner=async ()=>{
     if(savingPartner)return;
     if(!partnerForm.name||!partnerForm.owner)return alert("Partner name and owner are required");
     const mobileError=validateMobile(partnerForm.mobile);
@@ -3397,12 +3404,18 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
     const key=`partner:${normalizeMobile(partnerForm.mobile)}:${partnerForm.loginId.trim().toLowerCase()}`;
     if(!selected&&onceKeyActive(key))return alert("Processing... duplicate channel partner blocked");
     setSavingPartner(true);
-    const payload={...partnerForm,mobile:normalizeMobile(partnerForm.mobile)};
-    if(selected)setPartners(ps=>ps.map(p=>p.id===selected.id?{...p,...payload}:p));
+    const id=selected?.id||`CP${Date.now()}`;
+    try {
+      await createBackendAccessUser({name:partnerForm.name.trim(),loginId:partnerForm.loginId.trim(),password:partnerForm.password.trim(),role:"channel_partner",linkedEntityId:id});
+    } catch (error) {
+      setSavingPartner(false);
+      return alert(error.message||"Could not create channel partner login");
+    }
+    const {password, ...safePayload}={...partnerForm,mobile:normalizeMobile(partnerForm.mobile),loginId:partnerForm.loginId.trim()};
+    if(selected)setPartners(ps=>ps.map(p=>p.id===selected.id?{...p,...safePayload}:p));
     else {
-      const id=`CP${Date.now()}`;
-      setPartners(ps=>[...ps,{...payload,loginId:partnerForm.loginId.trim(),password:partnerForm.password.trim(),id,transactions:[],requests:[],createdAt:new Date().toISOString(),createdBy:"Management"}]);
-      auditLog({event:"Created",source:"Channel Partner",recordType:"Channel Partner",recordId:id,mobile:payload.mobile});
+      setPartners(ps=>[...ps,{...safePayload,id,transactions:[],requests:[],createdAt:new Date().toISOString(),createdBy:"Management"}]);
+      auditLog({event:"Created",source:"Channel Partner",recordType:"Channel Partner",recordId:id,mobile:safePayload.mobile});
     }
     setSelected(null); setShowPartner(false); setPartnerForm(blankPartner);
     setSavingPartner(false);
