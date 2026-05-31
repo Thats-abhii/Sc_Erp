@@ -32,6 +32,39 @@ async function logLoginAttempt(req, { loginId, role, success, failureReason, use
   }
 }
 
+async function migrateLegacyAppUser({ userLogin, password, role }) {
+  const key = role === "channel_partner" ? "channelPartners" : role === "salesman" ? "salesmen" : "";
+  if (!key) return null;
+
+  const rows = await query("select value from app_state where key = $1 limit 1", [key]);
+  const records = Array.isArray(rows[0]?.value) ? rows[0].value : [];
+  const legacy = records.find((record) =>
+    String(record.loginId || "").trim().toLowerCase() === userLogin &&
+    String(record.password || "") === String(password || "")
+  );
+  if (!legacy) return null;
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const email = `${userLogin}@smartcovering.local`;
+  const name = legacy.name || legacy.owner || userLogin;
+  const linkedEntityId = String(legacy.id || "");
+  const users = await query(
+    `insert into users (name, email, login_id, password_hash, role, linked_entity_id, active)
+     values ($1, $2, $3, $4, $5, $6, true)
+     on conflict (email)
+     do update set
+       name = excluded.name,
+       login_id = excluded.login_id,
+       password_hash = excluded.password_hash,
+       role = excluded.role,
+       linked_entity_id = excluded.linked_entity_id,
+       active = true
+     returning *`,
+    [name, email, userLogin, passwordHash, role, linkedEntityId || null]
+  );
+  return users[0] || null;
+}
+
 authRouter.post("/login", async (req, res, next) => {
   try {
     const { email, loginId, password, role } = req.body;
@@ -46,7 +79,10 @@ authRouter.post("/login", async (req, res, next) => {
        limit 1`,
       [userLogin, role || null]
     );
-    const user = users[0];
+    let user = users[0];
+    if (!user && ["channel_partner", "salesman"].includes(role)) {
+      user = await migrateLegacyAppUser({ userLogin, password, role });
+    }
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       await logLoginAttempt(req, { loginId: userLogin, role, success: false, failureReason: "Invalid credentials", userId: user?.id || null });
       return res.status(401).json({ error: "Invalid credentials" });
