@@ -66,7 +66,7 @@ const APP_STATE_HEADERS = () => ({
   ...(APP_STATE_SECRET ? { "x-smartcovering-state-secret": APP_STATE_SECRET } : {})
 });
 const fetchSharedAppState = async () => {
-  const res = await fetch(`${API_BASE}/api/app-state`, { headers: APP_STATE_HEADERS() });
+  const res = await fetch(`${API_BASE}/api/app-state`, { headers: APP_STATE_HEADERS(), credentials:"include" });
   if(!res.ok)throw new Error(`App state load failed: ${res.status}`);
   return res.json();
 };
@@ -74,11 +74,25 @@ const saveSharedAppState = async state => {
   const res = await fetch(`${API_BASE}/api/app-state`, {
     method:"PUT",
     headers:APP_STATE_HEADERS(),
+    credentials:"include",
     body:JSON.stringify({state})
   });
   if(!res.ok)throw new Error(`App state save failed: ${res.status}`);
   return res.json();
 };
+const authRequest = async (path, options={}) => {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    credentials:"include",
+    headers:{ "Content-Type":"application/json", ...(options.headers||{}) }
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(data.error||`Request failed: ${res.status}`);
+  return data;
+};
+const loginToBackend = payload => authRequest("/api/auth/login", { method:"POST", body:JSON.stringify(payload) });
+const logoutFromBackend = () => authRequest("/api/auth/logout", { method:"POST" }).catch(()=>{});
+const getBackendUser = () => authRequest("/api/auth/me");
 
 //  HELPERS 
 const inr = n => new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:0}).format(n);
@@ -4402,11 +4416,15 @@ function ChannelPartnerPortal({ partners, setPartners, leads, setLeads, orders, 
   );
 }
 
-function LoginScreen({ onLogin, salesmen, channelPartners }) {
+function LoginScreen({ onLogin }) {
   const [salesLogin,setSalesLogin]=useState({loginId:"",password:""});
   const [partnerLogin,setPartnerLogin]=useState({loginId:"",password:""});
+  const [managementLogin,setManagementLogin]=useState({loginId:"",password:""});
+  const [productionLogin,setProductionLogin]=useState({loginId:"",password:""});
   const [salesError,setSalesError]=useState("");
   const [partnerError,setPartnerError]=useState("");
+  const [managementError,setManagementError]=useState("");
+  const [productionError,setProductionError]=useState("");
   const loginPath=window.location.pathname.toLowerCase();
   const loginPortal=window.SMART_COVERING_LOGIN_PORTAL||
     (loginPath.includes("salesman")
@@ -4417,42 +4435,38 @@ function LoginScreen({ onLogin, salesmen, channelPartners }) {
           ? "production"
           : "management");
   const [loginModal,setLoginModal]=useState(null);
-  const submitSalesman=e=>{
-    e.preventDefault();
-    const loginId=salesLogin.loginId.trim().toLowerCase();
-    const user=salesmen.find(s=>s.loginId?.toLowerCase()===loginId&&s.password===salesLogin.password);
-    if(!user){
-      setSalesError("Invalid salesman login ID or password");
-      return;
-    }
-    setSalesError("");
-    setLoginModal(null);
-    onLogin("salesman",user.id,user.password);
+  const entityIdFromUser=user=>{
+    if(user?.linkedEntityId===null||user?.linkedEntityId===undefined||user?.linkedEntityId==="")return null;
+    return /^\d+$/.test(String(user.linkedEntityId))?Number(user.linkedEntityId):user.linkedEntityId;
   };
-  const submitPartner=e=>{
+  const submitBackendLogin=async (e, form, backendRole, appRole, setError) => {
     e.preventDefault();
-    const loginId=partnerLogin.loginId.trim().toLowerCase();
-    const partner=channelPartners.find(p=>p.loginId?.toLowerCase()===loginId&&p.password===partnerLogin.password);
-    if(!partner){
-      setPartnerError("Invalid channel partner login ID or password");
-      return;
+    setError("");
+    try {
+      const data=await loginToBackend({loginId:form.loginId,password:form.password,role:backendRole});
+      setLoginModal(null);
+      onLogin(appRole,entityIdFromUser(data.user),"");
+    } catch (error) {
+      setError(error.message||"Invalid login ID or password");
     }
-    setPartnerError("");
-    setLoginModal(null);
-    onLogin("channelPartner",partner.id,partner.password);
   };
-  const submitProduction=()=>onLogin("productionTeam");
+  const submitManagement=e=>submitBackendLogin(e,managementLogin,"management","management",setManagementError);
+  const submitSalesman=e=>submitBackendLogin(e,salesLogin,"salesman","salesman",setSalesError);
+  const submitPartner=e=>submitBackendLogin(e,partnerLogin,"channel_partner","channelPartner",setPartnerError);
+  const submitProduction=e=>submitBackendLogin(e,productionLogin,"production","productionTeam",setProductionError);
   const openLogin=type=>{
     setLoginModal(type);
     setSalesError("");
     setPartnerError("");
+    setManagementError("");
+    setProductionError("");
   };
   const portal=loginPortal==="salesman"
     ? {title:"Salesman Login", initial:"S", sub:"Enter your assigned salesman login ID and password", form:salesLogin, setForm:setSalesLogin, error:salesError, submit:submitSalesman, button:"Login as Salesman", color:T.purple, idPlaceholder:"Salesman Login ID"}
     : loginPortal==="channelPartner"
       ? {title:"Channel Partner Login", initial:"CP", sub:"Submit new order requests and track order/payment status", form:partnerLogin, setForm:setPartnerLogin, error:partnerError, submit:submitPartner, button:"Login as Channel Partner", color:T.blue, idPlaceholder:"Partner Login ID"}
       : loginPortal==="production"
-        ? {title:"Production Team Login", initial:"P", sub:"Production stage update access", button:"Open Production Panel", color:T.green, production:true}
+        ? {title:"Production Team Login", initial:"P", sub:"Production stage update access", form:productionLogin, setForm:setProductionLogin, error:productionError, submit:submitProduction, button:"Login as Production", color:T.green, idPlaceholder:"Production Login ID"}
         : null;
   if(portal)return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -4464,20 +4478,7 @@ function LoginScreen({ onLogin, salesmen, channelPartners }) {
           <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:26,fontWeight:800,color:T.text,margin:"0 0 6px"}}>{portal.title}</h1>
           <p style={{fontSize:13,color:T.muted}}>{portal.sub}</p>
         </div>
-        {portal.production
-          ? <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 24px 60px rgba(15,23,42,.10)",padding:22}}>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:10,marginBottom:18}}>
-                <div style={{width:54,height:54,borderRadius:12,background:`${portal.color}14`,border:`1px solid ${portal.color}33`,color:portal.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,flexShrink:0}}>{portal.initial}</div>
-                <div>
-                  <div style={{fontWeight:800,fontSize:16,color:T.text}}>{portal.title}</div>
-                  <div style={{fontSize:12,color:T.muted,marginTop:2}}>Cutting, assembling, quality and completed stage updates only</div>
-                </div>
-              </div>
-              <div style={{display:"flex",justifyContent:"center"}}>
-                <PrimaryBtn color={portal.color} onClick={submitProduction}>{portal.button}</PrimaryBtn>
-              </div>
-            </div>
-          : <form onSubmit={portal.submit} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 24px 60px rgba(15,23,42,.10)",padding:22}}>
+        <form onSubmit={portal.submit} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 24px 60px rgba(15,23,42,.10)",padding:22}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
             <div style={{width:44,height:44,borderRadius:8,background:`${portal.color}14`,border:`1px solid ${portal.color}33`,color:portal.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,flexShrink:0}}>{portal.initial}</div>
             <div>
@@ -4490,7 +4491,7 @@ function LoginScreen({ onLogin, salesmen, channelPartners }) {
             {portal.error&&<div style={{fontSize:12,color:T.red}}>{portal.error}</div>}
             <PrimaryBtn color={portal.color}>{portal.button}</PrimaryBtn>
           </div>
-        </form>}
+        </form>
       </div>
     </div>
   );
@@ -4498,13 +4499,15 @@ function LoginScreen({ onLogin, salesmen, channelPartners }) {
     ? {title:"Salesman Login", initial:"S", sub:"Enter salesman login ID and password", form:salesLogin, setForm:setSalesLogin, error:salesError, submit:submitSalesman, button:"Login as Salesman", color:T.purple, idPlaceholder:"Salesman Login ID"}
     : loginModal==="partner"
       ? {title:"Channel Partner Login", initial:"CP", sub:"Submit orders and track payment/dispatch", form:partnerLogin, setForm:setPartnerLogin, error:partnerError, submit:submitPartner, button:"Login as Channel Partner", color:T.blue, idPlaceholder:"Partner Login ID"}
-      : null;
+      : loginModal==="production"
+        ? {title:"Production Login", initial:"P", sub:"Production stage update access", form:productionLogin, setForm:setProductionLogin, error:productionError, submit:submitProduction, button:"Login as Production", color:T.green, idPlaceholder:"Production Login ID"}
+        : null;
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:20,position:"relative"}}>
       <div style={{position:"absolute",top:18,right:20,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
         <button onClick={()=>openLogin("salesman")} style={{border:`1px solid ${T.border}`,background:T.card,color:T.text,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Salesman Login</button>
         <button onClick={()=>openLogin("partner")} style={{border:`1px solid ${T.blue}33`,background:`${T.blue}12`,color:T.blue,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Channel Partner</button>
-        <button onClick={submitProduction} style={{border:`1px solid ${T.green}33`,background:`${T.green}12`,color:T.green,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Production Login</button>
+        <button onClick={()=>openLogin("production")} style={{border:`1px solid ${T.green}33`,background:`${T.green}12`,color:T.green,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Production Login</button>
       </div>
       <div style={{width:"100%",maxWidth:390}}>
         {/* Logo */}
@@ -4518,22 +4521,25 @@ function LoginScreen({ onLogin, salesmen, channelPartners }) {
         </div>
 
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <button onClick={()=>onLogin("management")} style={{
+          <form onSubmit={submitManagement} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:"0 24px 60px rgba(15,23,42,.10)",padding:18,display:"grid",gap:10}}>
+          <div style={{
             width:"100%",padding:"14px 18px",
             background:T.blue,
-            border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",
+            border:"none",borderRadius:8,fontFamily:"inherit",
             display:"flex",alignItems:"center",gap:14,
             transition:"transform .1s,opacity .15s",
-          }}
-          onMouseEnter={e=>e.currentTarget.style.opacity=".9"}
-          onMouseLeave={e=>e.currentTarget.style.opacity="1"}
-          >
+          }}>
             <div style={{width:42,height:42,borderRadius:8,background:"rgba(255,255,255,.16)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,flexShrink:0}}>M</div>
             <div style={{textAlign:"left"}}>
               <div style={{fontWeight:700,fontSize:15,color:"#fff"}}>Management Login</div>
               <div style={{fontSize:12,color:"rgba(255,255,255,.75)",marginTop:1}}>Manage leads, follow-ups and reports</div>
             </div>
-          </button>
+          </div>
+          <input value={managementLogin.loginId} onChange={e=>setManagementLogin(f=>({...f,loginId:e.target.value}))} placeholder="Management Login ID" autoComplete="username" />
+          <input type="password" value={managementLogin.password} onChange={e=>setManagementLogin(f=>({...f,password:e.target.value}))} placeholder="Password" autoComplete="current-password" />
+          {managementError&&<div style={{fontSize:12,color:T.red}}>{managementError}</div>}
+          <PrimaryBtn color={T.blue}>Login as Management</PrimaryBtn>
+          </form>
         </div>
 
       </div>
@@ -4817,8 +4823,21 @@ export default function App() {
   const [authPassword,setAuthPassword]=useState("");
   const sharedStateReadyRef=useRef(false);
   const sharedStateSaveTimerRef=useRef(null);
+  const withoutPassword=row=>{
+    const {password, ...safe}=row||{};
+    return safe;
+  };
   const currentSharedState=()=>({
-    leads, orders, followups, payments, salesmen, channelPartners, bills, purchases, smartInventory, expenses
+    leads,
+    orders,
+    followups,
+    payments,
+    salesmen:salesmen.map(withoutPassword),
+    channelPartners:channelPartners.map(p=>({...withoutPassword(p),requests:p.requests||[]})),
+    bills,
+    purchases,
+    smartInventory,
+    expenses
   });
 
   useEffect(()=>{ localStorage.setItem("smartcovering_leads",JSON.stringify(leads)); },[leads]);
@@ -4832,6 +4851,10 @@ export default function App() {
   useEffect(()=>{ localStorage.setItem("smartcovering_smart_inventory",JSON.stringify(smartInventory)); },[smartInventory]);
   useEffect(()=>{ localStorage.setItem("smartcovering_expenses",JSON.stringify(expenses)); },[expenses]);
   useEffect(()=>{
+    if(!role){
+      sharedStateReadyRef.current=false;
+      return;
+    }
     let cancelled=false;
     fetchSharedAppState().then(data=>{
       if(cancelled)return;
@@ -4853,7 +4876,7 @@ export default function App() {
       sharedStateReadyRef.current=false;
     });
     return ()=>{ cancelled=true; };
-  },[]);
+  },[role]);
   useEffect(()=>{
     if(!sharedStateReadyRef.current)return;
     clearTimeout(sharedStateSaveTimerRef.current);
@@ -4892,13 +4915,13 @@ export default function App() {
   const activeSalesman=salesmen.find(s=>s.id===activeSalesmanId);
   const activePartner=channelPartners.find(p=>p.id===activePartnerId);
   useEffect(()=>{
-    if(role==="salesman"&&activeSalesmanId){
+    if(role==="salesman"&&activeSalesmanId&&authPassword){
       const current=salesmen.find(s=>s.id===activeSalesmanId);
       if(!current||current.password!==authPassword){
         setRole(null);setActiveSalesmanId(null);setAuthPassword("");setMod("dashboard");
       }
     }
-    if(role==="channelPartner"&&activePartnerId){
+    if(role==="channelPartner"&&activePartnerId&&authPassword){
       const current=channelPartners.find(p=>p.id===activePartnerId);
       if(!current||current.password!==authPassword){
         setRole(null);setActivePartnerId(null);setAuthPassword("");setMod("dashboard");
@@ -4914,7 +4937,7 @@ export default function App() {
   const visibleFollowups=isSalesman?followups.filter(f=>visibleLeadIds.has(f.leadId)):followups;
   const alertCount=unifiedFollowups(activeWorkflowLeads,visibleFollowups,salesmen).filter(f=>(f.nextDate||todayStr())<todayStr()).length;
 
-  if(!role)return <><style>{css}</style><LoginScreen salesmen={salesmen} channelPartners={channelPartners} onLogin={(nextRole,entityId=null,password="")=>{setRole(nextRole);setActiveSalesmanId(nextRole==="salesman"?entityId:null);setActivePartnerId(nextRole==="channelPartner"?entityId:null);setAuthPassword(password);setMod(nextRole==="productionTeam"?"production":"dashboard")}} /></>;
+  if(!role)return <><style>{css}</style><LoginScreen onLogin={(nextRole,entityId=null,password="")=>{setRole(nextRole);setActiveSalesmanId(nextRole==="salesman"?entityId:null);setActivePartnerId(nextRole==="channelPartner"?entityId:null);setAuthPassword(password);setMod(nextRole==="productionTeam"?"production":"dashboard")}} /></>;
 
   const GUARD = fn => isManager ? (()=>{}) : fn;
   const visibleNav=isProductionTeam?NAV.filter(item=>item.id==="production"):(isPartner?NAV.filter(item=>item.id==="dashboard"):(isSalesman?NAV.filter(item=>!["channelPartners","inventoryDashboard","production","billing","purchase","dailyExpenses","salesmen","reports"].includes(item.id)):NAV));
@@ -5032,7 +5055,7 @@ export default function App() {
                   {!collapsed&&<div>
                     <div style={{fontSize:12,fontWeight:500,color:T.text}}>{isProductionTeam?"Production Team":(isPartner?(activePartner?.name||"Channel Partner"):(isSalesman?(activeSalesman?.name||"Salesman"):"Management"))}</div>
                   </div>}
-                  <button onClick={()=>{setRole(null);setActiveSalesmanId(null);setActivePartnerId(null);setAuthPassword("");setMod("dashboard")}} style={{padding:"6px 14px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",transition:"all .15s"}}
+                  <button onClick={()=>{logoutFromBackend();setRole(null);setActiveSalesmanId(null);setActivePartnerId(null);setAuthPassword("");setMod("dashboard")}} style={{padding:"6px 14px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",transition:"all .15s"}}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.05)";e.currentTarget.style.color=T.text}}
                   onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.muted}}
                   >Logout</button>

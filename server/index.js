@@ -1,6 +1,7 @@
 import "dotenv/config";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -12,14 +13,22 @@ import { webhooksRouter } from "./routes/webhooks.js";
 import { ordersRouter } from "./routes/orders.js";
 import { coreRouter } from "./routes/core.js";
 import { appStateRouter } from "./routes/appState.js";
+import { query } from "./db/pool.js";
 
 const app = express();
 const port = process.env.PORT || 4000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.join(__dirname, "..", "dist");
+const schemaPath = path.join(__dirname, "db", "schema.sql");
 
 if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET is required in production");
+}
+
+if (process.env.DATABASE_URL) {
+  const schema = await readFile(schemaPath, "utf8");
+  await query(schema);
+  console.log("Database schema checked");
 }
 
 app.use(helmet());

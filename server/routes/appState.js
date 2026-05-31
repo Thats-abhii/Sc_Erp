@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
+import { requireAuth } from "../middleware/auth.js";
 
 export const appStateRouter = Router();
 
@@ -11,21 +12,14 @@ const allowedKeys = new Set([
   "salesmen",
   "channelPartners",
   "bills",
+  "purchases",
   "smartInventory",
   "expenses",
   "reassignmentLogs",
   "auditLogs"
 ]);
 
-function requireAppStateAccess(req, res, next) {
-  const expected = process.env.APP_STATE_SHARED_SECRET;
-  if (expected && req.headers["x-smartcovering-state-secret"] !== expected) {
-    return res.status(401).json({ error: "Invalid app state secret" });
-  }
-  next();
-}
-
-appStateRouter.use(requireAppStateAccess);
+appStateRouter.use(requireAuth);
 
 appStateRouter.get("/", async (_req, res, next) => {
   try {
