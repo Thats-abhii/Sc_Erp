@@ -95,6 +95,7 @@ const authRequest = async (path, options={}) => {
   if(!res.ok)throw new Error(data.error||`Request failed: ${res.status}`);
   return data;
 };
+const isAuthExpiredError = error => /session expired|unauthorized|invalid or expired token/i.test(String(error?.message || ""));
 const loginToBackend = payload => authRequest("/api/auth/login", { method:"POST", body:JSON.stringify(payload) });
 const rememberAuthToken = token => { try { if(token)sessionStorage.setItem(AUTH_TOKEN_KEY,token); } catch {} };
 const clearAuthToken = () => { try { sessionStorage.removeItem(AUTH_TOKEN_KEY); } catch {} };
@@ -4855,6 +4856,19 @@ export default function App() {
   const [authPassword,setAuthPassword]=useState("");
   const sharedStateReadyRef=useRef(false);
   const sharedStateSaveTimerRef=useRef(null);
+  const sessionExpiredNoticeRef=useRef(false);
+  const forceLogoutForExpiredSession=()=>{
+    if(sessionExpiredNoticeRef.current)return;
+    sessionExpiredNoticeRef.current=true;
+    clearAuthToken();
+    setRole(null);
+    setActiveSalesmanId(null);
+    setActivePartnerId(null);
+    setAuthPassword("");
+    setMod("dashboard");
+    alert("Your login session has expired because the password was changed. Please login again with the new password.");
+    setTimeout(()=>{ sessionExpiredNoticeRef.current=false; },1000);
+  };
   const withoutPassword=row=>{
     const {password, ...safe}=row||{};
     return safe;
@@ -4903,8 +4917,9 @@ export default function App() {
       if(state.smartInventory&&typeof state.smartInventory==="object")setSmartInventory(state.smartInventory);
       if(Array.isArray(state.expenses))setExpenses(state.expenses);
       sharedStateReadyRef.current=true;
-      if(!hasBackendState)saveSharedAppState(currentSharedState()).catch(()=>{});
-    }).catch(()=>{
+      if(!hasBackendState)saveSharedAppState(currentSharedState()).catch(error=>{ if(isAuthExpiredError(error))forceLogoutForExpiredSession(); });
+    }).catch(error=>{
+      if(isAuthExpiredError(error))forceLogoutForExpiredSession();
       sharedStateReadyRef.current=false;
     });
     return ()=>{ cancelled=true; };
@@ -4913,10 +4928,18 @@ export default function App() {
     if(!sharedStateReadyRef.current)return;
     clearTimeout(sharedStateSaveTimerRef.current);
     sharedStateSaveTimerRef.current=setTimeout(()=>{
-      saveSharedAppState(currentSharedState()).catch(()=>{});
+      saveSharedAppState(currentSharedState()).catch(error=>{ if(isAuthExpiredError(error))forceLogoutForExpiredSession(); });
     },700);
     return ()=>clearTimeout(sharedStateSaveTimerRef.current);
   },[leads,orders,followups,payments,salesmen,channelPartners,bills,purchases,smartInventory,expenses]);
+  useEffect(()=>{
+    if(!role)return;
+    const checkSession=()=>{
+      getBackendUser().catch(error=>{ if(isAuthExpiredError(error))forceLogoutForExpiredSession(); });
+    };
+    const timer=setInterval(checkSession,8000);
+    return ()=>clearInterval(timer);
+  },[role]);
   useEffect(()=>{
     const timer=setInterval(()=>setHeaderClock(formatHeaderClock()),1000);
     return ()=>clearInterval(timer);
@@ -4953,7 +4976,13 @@ export default function App() {
     if(!newPassword)return;
     try {
       await changeOwnBackendPassword({currentPassword,newPassword});
-      alert("Password changed successfully. Please use the new password from next login.");
+      clearAuthToken();
+      setRole(null);
+      setActiveSalesmanId(null);
+      setActivePartnerId(null);
+      setAuthPassword("");
+      setMod("dashboard");
+      alert("Password changed successfully. Please login again with the new password.");
     } catch (error) {
       alert(error.message||"Could not change password");
     }
