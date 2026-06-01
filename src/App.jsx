@@ -2787,7 +2787,7 @@ function PurchaseSession({ purchases, setPurchases, expenses=[], setExpenses }) 
         <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
           <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
           <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
-          <PrimaryBtn onClick={exportPurchasesCsv} color={T.green}>Export CSV</PrimaryBtn>
+          <PrimaryBtn onClick={exportPurchasesCsv} color={T.blue}>Export CSV</PrimaryBtn>
         </div>
       </div>
     </GlassCard>
@@ -2875,7 +2875,7 @@ function DailyExpenses({ expenses, setExpenses }) {
         <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
           <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
           <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
-          <PrimaryBtn onClick={exportExpensesCsv} color={T.green}>Export CSV</PrimaryBtn>
+          <PrimaryBtn onClick={exportExpensesCsv} color={T.blue}>Export CSV</PrimaryBtn>
         </div>
       </div>
     </GlassCard>
@@ -5277,7 +5277,7 @@ export default function App() {
             {visibleNav.map(item=>{
               const active=mod===item.id;
               const hasAlert=item.id==="alerts"&&alertCount>0;
-              const navAccent=["billing","purchase","dailyExpenses"].includes(item.id)?T.blue:T.amber;
+              const navAccent=T.amber;
               return (
                 <button key={item.id} onClick={()=>setMod(item.id)} style={{
                   width:"100%",display:"flex",alignItems:"center",gap:10,
