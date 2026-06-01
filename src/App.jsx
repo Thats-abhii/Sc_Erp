@@ -326,6 +326,25 @@ const logoImgHtml = (className="logo") => {
   const fallbacks=urls.slice(1).map(u=>`'${u}'`).join(",");
   return `<img class="${className}" src="${urls[0]}" onerror="const next=[${fallbacks}]; const cur=this.getAttribute('data-logo-try')||0; if(Number(cur)<next.length){this.setAttribute('data-logo-try',Number(cur)+1); this.src=next[Number(cur)];} else {this.replaceWith(document.createTextNode('Smart Covering'));}" />`;
 };
+const imageUrlToDataUrl = async url => {
+  const res=await fetch(url,{cache:"no-store"});
+  if(!res.ok)throw new Error("Logo image could not be loaded");
+  const blob=await res.blob();
+  return await new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=reject;
+    reader.readAsDataURL(blob);
+  });
+};
+const quotationLogoHtml = async (className="logo") => {
+  try {
+    const dataUrl=await imageUrlToDataUrl(logoFallbackUrls()[0]);
+    return `<img class="${className}" src="${dataUrl}" alt="Smart Covering Logo" />`;
+  } catch {
+    return logoImgHtml(className);
+  }
+};
 
 const BRAND = {
   name: "Smart Covering",
@@ -459,16 +478,18 @@ const quoteTotals = (lead, quote={}) => {
   const total=taxable+gstAmount;
   return {lines,gross,discountPct,discount,taxable,gstPct,gstAmount,total};
 };
-const openQuotationPdf = (lead, quote) => {
+const openQuotationPdf = async (lead, quote) => {
+  const win=window.open("","_blank");
+  if(!win)return alert("Please allow popups to generate quotation PDF");
+  win.document.write(`<!doctype html><html><body style="font-family:Arial,sans-serif;padding:24px">Preparing quotation...</body></html>`);
   const windows=measurementWindows(lead);
   const productType=quote.productType||quotedProductType(lead);
   const actualArea=leadAreaSqft(lead);
   const area=leadChargeableSqft(lead);
   const {lines,gross,discountPct,discount,taxable,gstPct,gstAmount,total}=quoteTotals(lead,quote);
   const company=QUOTATION_COMPANY;
-  const quotationLogo=logoImgHtml("logo");
-  const win=window.open("","_blank");
-  if(!win)return alert("Please allow popups to generate quotation PDF");
+  const quotationLogo=await quotationLogoHtml("logo");
+  win.document.open();
   win.document.write(`<!doctype html><html><head><title>Quotation ${lead.id}</title><style>
     body{font-family:Arial,sans-serif;color:#111827;margin:0;padding:28px;background:#f8fafc}
     .page{background:#fff;border:1px solid #e5e7eb;padding:28px;max-width:920px;margin:auto}
