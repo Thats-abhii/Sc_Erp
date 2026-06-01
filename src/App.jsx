@@ -361,6 +361,12 @@ const QUOTATION_COMPANY = {
   email: "info@smartcovering.in",
   products: "Dealing Products: Window Blinds, Mosquito Mesh, Curtain Tracks"
 };
+const HSN_REQUIRED_MESSAGE = "HSN Code is mandatory. Please enter a valid HSN Code before submitting.";
+const GST_DUPLICATE_MESSAGE = "This GST Number already exists in the system. Please use the existing party record.";
+const normalizeGstin = value => String(value||"").trim().toUpperCase();
+const normalizePartyName = value => String(value||"").trim().toLowerCase();
+const hasHsn = value => String(value||"").trim().length>0;
+const firstPresent = (...values) => values.find(v=>String(v||"").trim()) || "";
 
 const partnerTransactions = partners => partners.flatMap(p=>(p.transactions||[]).map(t=>({...t,partner:p.name,partnerId:p.id})));
 const partnerBusinessRows = partners => partners.flatMap(p=>[
@@ -461,9 +467,11 @@ const quoteLineItems = (lead, quote={}) => measurementWindows(lead).map((raw,i)=
   const line=enrichMeasurementLine(raw);
   const rate=quoteLineRate(quote,line,i);
   const productType=quote?.lineItems?.[i]?.productType || quote?.productType || quotedProductType(lead);
+  const hsn=firstPresent(quote?.lineItems?.[i]?.hsn,quote?.hsn,line?.hsn);
   return {
     ...line,
     productType,
+    hsn,
     rate,
     amount:Math.round(lineChargeableSqft(line)*rate)
   };
@@ -480,6 +488,7 @@ const quoteTotals = (lead, quote={}) => {
   return {lines,gross,discountPct,discount,taxable,gstPct,gstAmount,total};
 };
 const openQuotationPdf = async (lead, quote) => {
+  if(quoteLineItems(lead,quote).some(line=>!hasHsn(line.hsn)))return alert(HSN_REQUIRED_MESSAGE);
   const win=window.open("","_blank");
   if(!win)return alert("Please allow popups to generate quotation PDF");
   win.document.write(`<!doctype html><html><body style="font-family:Arial,sans-serif;padding:24px">Preparing quotation...</body></html>`);
@@ -504,8 +513,8 @@ const openQuotationPdf = async (lead, quote) => {
     <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
     <div class="head"><div class="brand">${quotationLogo}<div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
     <div class="box"><b>Customer Details</b><br/>${lead.name}<br/>${lead.mobile}<br/>${lead.email||""}<br/>${lead.location||""}</div>
-    <table><thead><tr><th>#</th><th>Product</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
-      ${lines.map((line,i)=>`<tr><td>${i+1}</td><td>${line.productType||productType}</td><td>${line.label||`Window ${i+1}`}<br/><span class="muted">Actual: ${lineAreaSqft(line)} SQFT</span></td><td>${line.color||"-"}</td><td>${line.material||"-"}</td><td>${lineChargeableSqft(line)}</td><td>${inr(Number(line.rate||0))}</td><td>${gstPct}%</td><td>${inr(line.amount||0)}</td></tr>`).join("")}
+    <table><thead><tr><th>#</th><th>Product</th><th>HSN/SAC</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
+      ${lines.map((line,i)=>`<tr><td>${i+1}</td><td>${line.productType||productType}</td><td>${line.hsn||"-"}</td><td>${line.label||`Window ${i+1}`}<br/><span class="muted">Actual: ${lineAreaSqft(line)} SQFT</span></td><td>${line.color||"-"}</td><td>${line.material||"-"}</td><td>${lineChargeableSqft(line)}</td><td>${inr(Number(line.rate||0))}</td><td>${gstPct}%</td><td>${inr(line.amount||0)}</td></tr>`).join("")}
     </tbody></table>
     <div class="summary"><div><span>Actual Sq Ft</span><b>${actualArea}</b></div><div><span>Chargeable Sq Ft</span><b>${area}</b></div><div><span>Gross Amount</span><b>${inr(gross)}</b></div><div><span>Discount (${discountPct}%)</span><b>${inr(discount)}</b></div><div><span>Taxable Amount</span><b>${inr(taxable)}</b></div><div><span>GST (${gstPct}%)</span><b>${inr(gstAmount)}</b></div><div class="total"><span>Grand Total</span><span>${inr(total)}</span></div></div>
     <div class="box"><b>Notes</b><br/>${quote.notes||"Rates include standard material and fitting. Taxes and special hardware as applicable."}</div>
@@ -576,6 +585,7 @@ const billTaxDetails = (order, bill={}) => {
 };
 
 const openBillPdf = (order, bill={}) => {
+  if(!hasHsn(bill.hsn))return alert(HSN_REQUIRED_MESSAGE);
   const company=QUOTATION_COMPANY;
   const logoUrl=logoAssetUrl();
   const totals=billTaxDetails(order,bill);
@@ -1310,7 +1320,7 @@ function Leads({ leads, setLeads, orders, setOrders, payments, setPayments, foll
     if(measurementError)return alert(measurementError);
     setConverting(true);
     const quoteLines=quoteLineItems(lead,{...quotation,productType:productionProduct});
-    const orderPayload={id:nid,leadId:lead.id,customer:lead.name,mobile:lead.mobile,products:orderMeasurements.map((raw,i)=>{ const w=enrichMeasurementLine(raw); const qLine=quoteLines[i]||{}; return {name:qLine.productType||productionProduct,type:lead.measurement?.type||"Blind",sourceLeadProduct:lead.product,size:`Actual ${w.sqft} SQFT / Billing ${w.chargeableSqft} SQFT`,qty:Number(w.qty||1),unitPrice:Number(qLine.rate||quotation.rate||0),total:Number(qLine.amount ?? (w.chargeableSqft*Number(quotation.rate||0))),window:w.label||`Window ${i+1}`,height:w.height,width:w.width,heightUnit:w.heightUnit,widthUnit:w.widthUnit,heightFt:w.heightFt,widthFt:w.widthFt,sqft:w.sqft,actualSqft:w.sqft,chargeableSqft:w.chargeableSqft,billingSqft:w.chargeableSqft,color:w.color,material:w.material,code:w.code}; }),discount:Number(quotation.discount||0),discountType:"percent",gst:Number(quotation.gst||0),gstAmount:Number(quotation.gstAmount||0),taxable:Number(quotation.taxable||0),final:amount,advance:paid,balance,delivery:"",install:true,installer:"",status:"Approval Pending",approval:"Pending",created:todayStr(),createdAt:new Date().toISOString()};
+    const orderPayload={id:nid,leadId:lead.id,customer:lead.name,mobile:lead.mobile,products:orderMeasurements.map((raw,i)=>{ const w=enrichMeasurementLine(raw); const qLine=quoteLines[i]||{}; return {name:qLine.productType||productionProduct,type:lead.measurement?.type||"Blind",sourceLeadProduct:lead.product,hsn:firstPresent(qLine.hsn,quotation.hsn),size:`Actual ${w.sqft} SQFT / Billing ${w.chargeableSqft} SQFT`,qty:Number(w.qty||1),unitPrice:Number(qLine.rate||quotation.rate||0),total:Number(qLine.amount ?? (w.chargeableSqft*Number(quotation.rate||0))),window:w.label||`Window ${i+1}`,height:w.height,width:w.width,heightUnit:w.heightUnit,widthUnit:w.widthUnit,heightFt:w.heightFt,widthFt:w.widthFt,sqft:w.sqft,actualSqft:w.sqft,chargeableSqft:w.chargeableSqft,billingSqft:w.chargeableSqft,color:w.color,material:w.material,code:w.code}; }),discount:Number(quotation.discount||0),discountType:"percent",gst:Number(quotation.gst||0),gstAmount:Number(quotation.gstAmount||0),taxable:Number(quotation.taxable||0),final:amount,advance:paid,balance,delivery:"",install:true,installer:"",status:"Approval Pending",approval:"Pending",created:todayStr(),createdAt:new Date().toISOString()};
     setOrders(os=>{
       if(os.some(o=>o.leadId===lead.id||o.id===nid||(normalizeMobile(o.mobile)===normalizeMobile(lead.mobile)&&o.status==="Approval Pending"))){
         duplicateAudit("Lead Management Order",`Duplicate production order blocked for lead ${lead.id}`,{leadId:lead.id,mobile:lead.mobile});
@@ -1663,7 +1673,7 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
   const [showDetail,setShowDetail]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
   const [saving,setSaving]=useState(false);
-  const blank={customer:"",mobile:"",products:[{name:PRODUCTS[0],size:"",qty:1,unitPrice:0,total:0}],discount:0,final:0,advance:0,balance:0,delivery:"",install:false,installer:"",status:"Pending",leadId:""};
+  const blank={customer:"",mobile:"",products:[{name:PRODUCTS[0],hsn:"",size:"",qty:1,unitPrice:0,total:0}],discount:0,final:0,advance:0,balance:0,delivery:"",install:false,installer:"",status:"Pending",leadId:""};
   const [form,setForm]=useState(blank);
 
   const filtered=orders.filter(o=>fSt==="All"||o.status===fSt);
@@ -1673,6 +1683,7 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
   const save=()=>{
     if(saving)return;
     if(!form.customer)return alert("Customer name required");
+    if(form.products.some(p=>!hasHsn(p.hsn)))return alert(HSN_REQUIRED_MESSAGE);
     const mobileError=validateMobile(form.mobile);
     if(mobileError)return alert(mobileError);
     const normalizedMobile=normalizeMobile(form.mobile);
@@ -1795,14 +1806,15 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
           </FormRow>
           <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:10}}>Products</div>
           {form.products.map((p,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:10,marginBottom:8}}>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr",gap:10,marginBottom:8}}>
               <select value={p.name} onChange={e=>setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,name:e.target.value}:pp)}))}>{PRODUCTS.map(pr=><option key={pr}>{pr}</option>)}</select>
+              <input placeholder="HSN/SAC *" value={p.hsn||""} onChange={e=>setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,hsn:e.target.value}:pp)}))} style={!hasHsn(p.hsn)?{borderColor:T.red}:null} />
               <input placeholder="Size" value={p.size} onChange={e=>setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,size:e.target.value}:pp)}))} />
               <input type="number" placeholder="Qty" value={p.qty} onChange={e=>{ const q=Number(e.target.value);setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,qty:q,total:q*pp.unitPrice}:pp)})); }} />
               <input type="number" placeholder="Unit Price " value={p.unitPrice} onChange={e=>{ const up=Number(e.target.value);setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,unitPrice:up,total:up*pp.qty}:pp)})); }} />
             </div>
           ))}
-          <button onClick={()=>setForm(f=>({...f,products:[...f.products,{name:PRODUCTS[0],size:"",qty:1,unitPrice:0,total:0}]}))} style={{background:"none",border:"none",color:T.teal,cursor:"pointer",fontSize:12,padding:"4px 0",fontFamily:"inherit"}}>+ Add Product Line</button>
+          <button onClick={()=>setForm(f=>({...f,products:[...f.products,{name:PRODUCTS[0],hsn:"",size:"",qty:1,unitPrice:0,total:0}]}))} style={{background:"none",border:"none",color:T.teal,cursor:"pointer",fontSize:12,padding:"4px 0",fontFamily:"inherit"}}>+ Add Product Line</button>
           <FormRow cols={3} ><Field label="Discount ()"><input type="number" value={form.discount} onChange={e=>setForm(f=>({...f,discount:Number(e.target.value)}))} /></Field><Field label="Advance Paid ()"><input type="number" value={form.advance} onChange={e=>setForm(f=>({...f,advance:Number(e.target.value)}))} /></Field><Field label="Status"><select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>{["Pending","In Production"].map(s=><option key={s}>{s}</option>)}</select></Field></FormRow>
           <div style={{background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.2)",borderRadius:10,padding:"10px 14px",fontSize:12,color:T.sub}}>
             Subtotal: {inr(form.products.reduce((s,p)=>s+p.total,0))} | After Discount: {inr(form.products.reduce((s,p)=>s+p.total,0)-form.discount)} | Balance: {inr(form.products.reduce((s,p)=>s+p.total,0)-form.discount-form.advance)}
@@ -2458,6 +2470,16 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
   const [exportTo,setExportTo]=useState(todayStr());
   const [billForm,setBillForm]=useState({invoiceNo:"",date:todayStr(),customerGstin:"",customerAddress:"",place:"Karnataka",hsn:"",notes:"",taxType:"Intra-State",cgstRate:9,sgstRate:9,igstRate:0});
   const [payForm,setPayForm]=useState({paid:""});
+  const knownParties=()=>{
+    const rows=[
+      ...bills.map(b=>({gstin:b.customerGstin,name:orders.find(o=>o.id===b.orderId)?.customer,address:b.customerAddress,place:b.place})),
+      ...orders.map(o=>({gstin:o.customerGstin,name:o.customer,address:o.address,place:o.place})),
+      ...leads.map(l=>({gstin:l.customerGstin||l.gstin,name:l.name,address:l.location,place:l.place}))
+    ].filter(p=>p.name||p.gstin);
+    return rows;
+  };
+  const partyByGstin=gstin=>knownParties().find(p=>normalizeGstin(p.gstin)===normalizeGstin(gstin));
+  const partyByName=name=>knownParties().find(p=>normalizePartyName(p.name)===normalizePartyName(name));
   const billGstinError=gstin=>{
     const raw=String(gstin||"").trim().toUpperCase();
     if(!raw)return "";
@@ -2468,9 +2490,11 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
   const applyCustomerGstin=value=>{
     const gstin=String(value||"").toUpperCase();
     const stateCode=gstin.slice(0,2);
+    const party=partyByGstin(gstin);
     setBillForm(f=>({
       ...f,
       customerGstin:gstin,
+      ...(party?{customerAddress:party.address||f.customerAddress,place:party.place||f.place}:{}),
       ...(gstin.startsWith("29")?{taxType:"Intra-State",place:"Karnataka",igstRate:0,cgstRate:f.cgstRate||9,sgstRate:f.sgstRate||9}:{}),
       ...(/^\d{2}$/.test(stateCode)&&stateCode!=="29"?{taxType:"Inter-State",place:"Inter-State",cgstRate:0,sgstRate:0,igstRate:f.igstRate||18}:{})
     }));
@@ -2481,14 +2505,18 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
   const shown=billableOrders.filter(o=>{ const b=billFor(o.id); return filter==="billable"?!b:filter==="billed"?b?.type==="GST Bill":filter==="cash"?b?.type==="Cash No Bill":true; });
   const totals=billableOrders.reduce((acc,o)=>{ const b=billFor(o.id); acc.total+=Number(o.final||0); if(b?.type==="GST Bill")acc.billed+=Number(o.final||0); if(b?.type==="Cash No Bill")acc.cash+=Number(o.final||0); if(!b)acc.pending+=Number(o.final||0); return acc; },{total:0,billed:0,cash:0,pending:0});
   const openBill=order=>{
+    const party=partyByName(order.customer)||{};
     setBillOrder(order);
-    setBillForm({invoiceNo:`SC/${new Date().getFullYear()}/${String(bills.length+1).padStart(4,"0")}`,date:todayStr(),customerGstin:"",customerAddress:"",place:"Karnataka",hsn:"",notes:"",taxType:"Intra-State",cgstRate:9,sgstRate:9,igstRate:0});
+    const gstin=normalizeGstin(party.gstin||order.customerGstin);
+    const isInter=gstin&&!gstin.startsWith("29");
+    setBillForm({invoiceNo:`SC/${new Date().getFullYear()}/${String(bills.length+1).padStart(4,"0")}`,date:todayStr(),customerGstin:gstin,customerAddress:party.address||order.address||"",place:party.place||(isInter?"Inter-State":"Karnataka"),hsn:firstPresent(order.hsn,...(order.products||[]).map(p=>p.hsn)),notes:"",taxType:isInter?"Inter-State":"Intra-State",cgstRate:isInter?0:9,sgstRate:isInter?0:9,igstRate:isInter?18:0});
   };
   const saveBill=()=>{
     if(savingBill)return;
     if(!billOrder)return;
     if(bills.some(b=>b.orderId===billOrder.id&&b.type==="GST Bill"))return alert("Bill already generated for this order");
     if(onceKeyActive(`bill:${billOrder.id}:gst`))return alert("Processing... duplicate bill blocked");
+    if(!hasHsn(billForm.hsn))return alert(HSN_REQUIRED_MESSAGE);
     const gstError=billGstinError(billForm.customerGstin);
     if(gstError)return alert(gstError);
     const tax=billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm);
@@ -2632,7 +2660,7 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
       {billOrder&&<Modal title={`Generate Bill - ${billOrder.id}`} onClose={()=>setBillOrder(null)} wide>
         <div style={{background:T.cardHi,border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:T.sub}}>Order Value: <b style={{color:T.text}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).final)}</b> | Paid: <b style={{color:T.green}}>{inr(paidFor(billOrder))}</b> | Balance: <b style={{color:T.red}}>{inr(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).balance)}</b></div>
         <FormRow cols={3}><Field label="Invoice No"><input value={billForm.invoiceNo} onChange={e=>setBillForm(f=>({...f,invoiceNo:e.target.value}))} /></Field><Field label="Invoice Date"><input type="date" value={billForm.date} onChange={e=>setBillForm(f=>({...f,date:e.target.value}))} /></Field><Field label="Place of Supply"><input value={billForm.place} onChange={e=>setBillForm(f=>({...f,place:e.target.value}))} /></Field></FormRow>
-        <FormRow cols={3}><Field label="Customer GSTIN"><input maxLength={15} value={billForm.customerGstin} onChange={e=>applyCustomerGstin(e.target.value)} placeholder="Optional for B2C" />{billGstinError(billForm.customerGstin)&&<div style={{fontSize:11,color:T.red,marginTop:4}}>{billGstinError(billForm.customerGstin)}</div>}</Field><Field label="HSN / SAC"><input value={billForm.hsn} onChange={e=>setBillForm(f=>({...f,hsn:e.target.value}))} placeholder="Enter applicable HSN/SAC" /></Field><Field label="Tax Type"><input disabled value={billForm.taxType||"Intra-State"} /></Field></FormRow>
+        <FormRow cols={3}><Field label="Customer GSTIN"><input maxLength={15} value={billForm.customerGstin} onChange={e=>applyCustomerGstin(e.target.value)} placeholder="Optional for B2C" list="billing-party-gstin-master" /><datalist id="billing-party-gstin-master">{knownParties().map((p,i)=><option key={i} value={normalizeGstin(p.gstin)}>{p.name}</option>)}</datalist>{billGstinError(billForm.customerGstin)&&<div style={{fontSize:11,color:T.red,marginTop:4}}>{billGstinError(billForm.customerGstin)}</div>}</Field><Field label="HSN / SAC *"><input value={billForm.hsn} onChange={e=>setBillForm(f=>({...f,hsn:e.target.value}))} placeholder="Enter applicable HSN/SAC" style={!hasHsn(billForm.hsn)?{borderColor:T.red}:null} /></Field><Field label="Tax Type"><input disabled value={billForm.taxType||"Intra-State"} /></Field></FormRow>
         <FormRow cols={4}><Field label="CGST %"><input type="number" disabled={billForm.taxType==="Inter-State"} value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).cgstRate} onChange={e=>setBillForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field><Field label="SGST %"><input type="number" disabled={billForm.taxType==="Inter-State"} value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).sgstRate} onChange={e=>setBillForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field><Field label="IGST %"><input type="number" disabled={billForm.taxType!=="Inter-State"} value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).igstRate} onChange={e=>setBillForm(f=>({...f,igstRate:e.target.value}))} /></Field><Field label="Total GST %"><input disabled value={billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).gstRate} /></Field></FormRow>
         {(billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).cgstRate+billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).sgstRate>18||billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).igstRate>18)&&<div style={{fontSize:12,color:T.red,marginBottom:10}}>Total GST cannot exceed 18%.</div>}
         {billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).taxType!=="Inter-State"&&billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).cgstRate!==billTaxDetails({...billOrder,advance:paidFor(billOrder)},billForm).sgstRate&&<div style={{fontSize:12,color:T.red,marginBottom:10}}>CGST and SGST must be equal.</div>}
@@ -2670,12 +2698,18 @@ function PurchaseSession({ purchases, setPurchases, expenses=[], setExpenses }) 
   const applyVendorGstin=value=>{
     const gstin=String(value||"").toUpperCase();
     const stateCode=gstin.slice(0,2);
+    const party=purchases.find(p=>normalizeGstin(p.vendorGstin)===normalizeGstin(gstin));
     setForm(f=>({
       ...f,
       vendorGstin:gstin,
+      ...(party?{vendor:party.vendor||f.vendor,place:party.place||f.place}:{}),
       ...(gstin.startsWith("29")?{taxType:"Intra-State",place:"Karnataka",igstRate:0,cgstRate:f.cgstRate||9,sgstRate:f.sgstRate||9}:{}),
       ...(/^\d{2}$/.test(stateCode)&&stateCode!=="29"?{taxType:"Inter-State",place:"Inter-State",cgstRate:0,sgstRate:0,igstRate:f.igstRate||18}:{})
     }));
+  };
+  const applyVendorName=value=>{
+    const party=purchases.find(p=>normalizePartyName(p.vendor)===normalizePartyName(value));
+    setForm(f=>({...f,vendor:value,...(party?{vendorGstin:party.vendorGstin||f.vendorGstin,place:party.place||f.place,taxType:party.taxType||f.taxType,cgstRate:party.cgstRate??f.cgstRate,sgstRate:party.sgstRate??f.sgstRate,igstRate:party.igstRate??f.igstRate}:{})}));
   };
   const purchaseTotals=p=>{
     const taxable=Number(p.taxable||0);
@@ -2703,14 +2737,17 @@ function PurchaseSession({ purchases, setPurchases, expenses=[], setExpenses }) 
   });
   const save=()=>{
     if(!form.vendor.trim()||!form.invoiceNo.trim()||!form.item.trim()||!form.taxable)return alert("Vendor, invoice number, item and taxable amount are required");
+    if(!hasHsn(form.hsn))return alert(HSN_REQUIRED_MESSAGE);
     const gstError=gstinError(form.vendorGstin);
     if(gstError)return alert(gstError);
+    const duplicateParty=normalizeGstin(form.vendorGstin)&&purchases.find(p=>p.id!==editId&&normalizeGstin(p.vendorGstin)===normalizeGstin(form.vendorGstin)&&normalizePartyName(p.vendor)!==normalizePartyName(form.vendor));
+    if(duplicateParty)return alert(`${GST_DUPLICATE_MESSAGE}\n\nExisting party: ${duplicateParty.vendor}`);
     const t=purchaseTotals(form);
     if(t.taxType!=="Inter-State"&&t.cgstRate+t.sgstRate>18)return alert("CGST + SGST cannot exceed 18%");
     if(t.taxType!=="Inter-State"&&t.cgstRate!==t.sgstRate)return alert("CGST and SGST must be equal");
     if(t.taxType==="Inter-State"&&t.igstRate>18)return alert("IGST cannot exceed 18%");
     const purchaseId=editId||`PUR${Date.now()}`;
-    const payload={...form,id:purchaseId,category:"Raw Material",vendor:form.vendor.trim(),vendorGstin:form.vendorGstin.trim().toUpperCase(),invoiceNo:form.invoiceNo.trim(),item:form.item.trim(),taxable:Number(form.taxable||0),cgstRate:t.cgstRate,sgstRate:t.sgstRate,igstRate:t.igstRate,gstRate:t.gstRate,paid:Number(form.paid||0),updatedAt:new Date().toISOString()};
+    const payload={...form,id:purchaseId,category:"Raw Material",vendor:form.vendor.trim(),vendorGstin:normalizeGstin(form.vendorGstin),invoiceNo:form.invoiceNo.trim(),item:form.item.trim(),hsn:String(form.hsn||"").trim(),taxable:Number(form.taxable||0),cgstRate:t.cgstRate,sgstRate:t.sgstRate,igstRate:t.igstRate,gstRate:t.gstRate,paid:Number(form.paid||0),updatedAt:new Date().toISOString()};
     const record=editId?payload:{createdAt:new Date().toISOString(),createdBy:"Management",...payload};
     const total=purchaseTotals(record).total;
     setPurchases(ps=>editId?ps.map(p=>p.id===editId?{...p,...record}:p):[record,...ps]);
@@ -2799,8 +2836,8 @@ function PurchaseSession({ purchases, setPurchases, expenses=[], setExpenses }) 
     </GlassCard>
     {showAdd&&<Modal title={editId?"Edit Purchase":"Add Purchase"} onClose={()=>{setShowAdd(false);setEditId(null);setForm(blank);}} wide>
       <FormRow cols={3}><Field label="Purchase Date"><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></Field><Field label="Invoice Date"><input type="date" value={form.invoiceDate} onChange={e=>setForm(f=>({...f,invoiceDate:e.target.value}))} /></Field><Field label="Supplier Invoice No *"><input value={form.invoiceNo} onChange={e=>setForm(f=>({...f,invoiceNo:e.target.value}))} /></Field></FormRow>
-      <FormRow cols={3}><Field label="Vendor Name *"><input value={form.vendor} onChange={e=>setForm(f=>({...f,vendor:e.target.value}))} /></Field><Field label="Vendor GSTIN"><input maxLength={15} value={form.vendorGstin} onChange={e=>applyVendorGstin(e.target.value)} placeholder="29ABCDE1234F1Z5" />{gstinError(form.vendorGstin)&&<div style={{fontSize:11,color:T.red,marginTop:4}}>{gstinError(form.vendorGstin)}</div>}</Field><Field label="Place of Supply"><input value={form.place} onChange={e=>setForm(f=>({...f,place:e.target.value}))} /></Field></FormRow>
-      <FormRow cols={4}><Field label="Category"><input disabled value="Raw Material" /></Field><Field label="Item / Description *"><input value={form.item} onChange={e=>setForm(f=>({...f,item:e.target.value}))} /></Field><Field label="HSN / SAC"><input value={form.hsn} onChange={e=>setForm(f=>({...f,hsn:e.target.value}))} /></Field><Field label="Tax Type"><input disabled value={form.taxType||"Intra-State"} /></Field></FormRow>
+      <FormRow cols={3}><Field label="Vendor Name *"><input value={form.vendor} onChange={e=>applyVendorName(e.target.value)} list="purchase-vendor-master" /><datalist id="purchase-vendor-master">{purchases.map(p=><option key={p.id} value={p.vendor}>{p.vendorGstin}</option>)}</datalist></Field><Field label="Vendor GSTIN"><input maxLength={15} value={form.vendorGstin} onChange={e=>applyVendorGstin(e.target.value)} placeholder="29ABCDE1234F1Z5" />{gstinError(form.vendorGstin)&&<div style={{fontSize:11,color:T.red,marginTop:4}}>{gstinError(form.vendorGstin)}</div>}</Field><Field label="Place of Supply"><input value={form.place} onChange={e=>setForm(f=>({...f,place:e.target.value}))} /></Field></FormRow>
+      <FormRow cols={4}><Field label="Category"><input disabled value="Raw Material" /></Field><Field label="Item / Description *"><input value={form.item} onChange={e=>setForm(f=>({...f,item:e.target.value}))} /></Field><Field label="HSN / SAC *"><input value={form.hsn} onChange={e=>setForm(f=>({...f,hsn:e.target.value}))} style={!hasHsn(form.hsn)?{borderColor:T.red}:null} /></Field><Field label="Tax Type"><input disabled value={form.taxType||"Intra-State"} /></Field></FormRow>
       <FormRow cols={5}><Field label="Qty"><input type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))} /></Field><Field label="Taxable Amount *"><input type="number" value={form.taxable} onChange={e=>setForm(f=>({...f,taxable:e.target.value}))} /></Field><Field label="CGST %"><input type="number" disabled={form.taxType==="Inter-State"} value={purchaseTotals(form).cgstRate} onChange={e=>setForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field><Field label="SGST %"><input type="number" disabled={form.taxType==="Inter-State"} value={purchaseTotals(form).sgstRate} onChange={e=>setForm(f=>({...f,cgstRate:e.target.value,sgstRate:e.target.value}))} /></Field></FormRow>
       <FormRow cols={3}><Field label="IGST %"><input type="number" disabled={form.taxType!=="Inter-State"} value={purchaseTotals(form).igstRate} onChange={e=>setForm(f=>({...f,igstRate:e.target.value}))} /></Field><Field label="Total GST %"><input disabled value={purchaseTotals(form).gstRate} /></Field><Field label="Paid Amount"><input type="number" value={form.paid} onChange={e=>setForm(f=>({...f,paid:e.target.value}))} /></Field></FormRow>
       {(purchaseTotals(form).cgstRate+purchaseTotals(form).sgstRate>18||purchaseTotals(form).igstRate>18)&&<div style={{fontSize:12,color:T.red,marginBottom:10}}>Total GST cannot exceed 18%.</div>}
@@ -3055,7 +3092,7 @@ function InventoryDashboard({ smartInventory, setSmartInventory }) {
   const [openLengths,setOpenLengths]=useState(null);
   const [inventoryModal,setInventoryModal]=useState(null);
   const [sectionModal,setSectionModal]=useState(null);
-  const blankInv={kind:"blinds",section:"rolls",name:"",item:"",detail:"",shade:"",code:"",rolls:"",metres:"",qty:"",unit:"pcs",full:"",fullLengthFt:12,cut:"",lengthsText:""};
+  const blankInv={kind:"blinds",section:"rolls",name:"",item:"",detail:"",shade:"",code:"",hsn:"",rolls:"",metres:"",qty:"",unit:"pcs",full:"",fullLengthFt:12,cut:"",lengthsText:""};
   const [inventoryForm,setInventoryForm]=useState(blankInv);
   const parseLengths=text=>(text||"").split(",").map(x=>x.trim()).filter(Boolean).map(x=>{ const [size,qty]=x.split(":").map(p=>p?.trim()); return {size:size||"",qty:Number(qty||0)}; }).filter(x=>x.size);
   const lengthsText=lengths=>(lengths||[]).map(l=>`${l.size}:${l.qty}`).join(", ");
@@ -3066,23 +3103,23 @@ function InventoryDashboard({ smartInventory, setSmartInventory }) {
   const audit=(text,kind)=>updateInv(si=>({movements:[{id:Date.now(),text,kind,date:todayStr()},...(si.movements||[])].slice(0,20)}));
   const saveInventory=()=>{
     const f=inventoryForm; const id=inventoryModal?.id||`inv${Date.now()}`; const label=(f.item||f.name).trim();
-    if(!label)return alert("Inventory name is required"); if(!f.code.trim())return alert("Password code is required");
+    if(!label)return alert("Inventory name is required"); if(!f.code.trim())return alert("Password code is required"); if(!hasHsn(f.hsn))return alert(HSN_REQUIRED_MESSAGE);
     setSmartInventory(si=>{
       const next={...si};
       if(f.kind==="blinds"&&f.section==="rolls"){
-        const row={id,name:label,code:f.code.trim(),shade:f.shade.trim(),rolls:Number(f.rolls||0),metres:Number(f.metres||0)};
+        const row={id,name:label,code:f.code.trim(),hsn:String(f.hsn||"").trim(),shade:f.shade.trim(),rolls:Number(f.rolls||0),metres:Number(f.metres||0)};
         next.blindRolls=inventoryModal?.mode==="edit"?si.blindRolls.map(x=>x.id===id?row:x):[...si.blindRolls,row];
       }
       if(f.kind==="blinds"&&f.section==="components"){
-        const row={id,item:label,detail:f.detail.trim(),qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),reserved:Number(f.reserved||0)};
+        const row={id,item:label,detail:f.detail.trim(),qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),hsn:String(f.hsn||"").trim(),reserved:Number(f.reserved||0)};
         next.blindComponents=inventoryModal?.mode==="edit"?si.blindComponents.map(x=>x.id===id?row:x):[...si.blindComponents,row];
       }
       if(f.kind==="mesh"&&f.section==="materials"){
-        const row={id,item:label,code:f.code.trim(),full:Number(f.full||0),fullLengthFt:Number(f.fullLengthFt||12),lengths:parseLengths(f.lengthsText),cut:Number(f.cut||0),unit:f.unit||"lengths",reserved:Number(f.reserved||0)};
+        const row={id,item:label,code:f.code.trim(),hsn:String(f.hsn||"").trim(),full:Number(f.full||0),fullLengthFt:Number(f.fullLengthFt||12),lengths:parseLengths(f.lengthsText),cut:Number(f.cut||0),unit:f.unit||"lengths",reserved:Number(f.reserved||0)};
         next.meshComponents=inventoryModal?.mode==="edit"?si.meshComponents.map(x=>x.id===id?row:x):[...si.meshComponents,row];
       }
       if(f.kind==="mesh"&&f.section==="hardware"){
-        const row={id,item:label,qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),reserved:Number(f.reserved||0)};
+        const row={id,item:label,qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),hsn:String(f.hsn||"").trim(),reserved:Number(f.reserved||0)};
         next.meshHardware=inventoryModal?.mode==="edit"?si.meshHardware.map(x=>x.id===id?row:x):[...si.meshHardware,row];
       }
       next.movements=[{id:Date.now(),text:`${inventoryModal?.mode==="edit"?"Edited":"Added"} ${label}`,kind:f.kind,date:todayStr()},...(si.movements||[])].slice(0,20);
@@ -3135,7 +3172,7 @@ function InventoryDashboard({ smartInventory, setSmartInventory }) {
       {sectionModal.kind==="mesh"&&sectionModal.section==="materials"&&<><Table headers={["Material","Password Code","Full Stock","Cut Pieces","Reserved","Usable","Action"]}>{inv.meshComponents.map(i=><TR key={i.id}><TD bold>{i.item}</TD><TD><Code>{i.code}</Code></TD><TD bold color={T.green}>{i.full} {i.unit}<div style={{fontSize:11,color:T.muted}}>{i.fullLengthFt||12} ft each</div></TD><TD>{i.lengths?.length?<button onClick={()=>setOpenLengths(openLengths===i.item?null:i.item)} style={{border:`1px solid ${T.border}`,borderRadius:6,background:T.cardHi,padding:"6px 10px",fontSize:12,fontWeight:700,color:T.blue,cursor:"pointer"}}>{openLengths===i.item?"Hide":"Check"} pieces</button>:<span style={{color:T.muted}}>No cut pieces</span>}</TD><TD>{i.reserved||0}</TD><TD>{Math.max(Number(i.full||0)-Number(i.reserved||0),0)} {i.unit}{stockBar(Math.max(Number(i.full||0)-Number(i.reserved||0),0),i.full,T.teal)}</TD><TD><RowActions onEdit={()=>openEditInventory("mesh","materials",i)} onRemove={()=>removeInventory("meshComponents",i.id,i.item,"mesh")} /></TD></TR>)}</Table>{openLengths&&<div style={{padding:16,borderTop:`1px solid ${T.border}`}}><div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:10}}>{openLengths} - Cut Piece Inventory</div><div style={{display:"flex",flexWrap:"wrap",gap:8}}>{inv.meshComponents.find(i=>i.item===openLengths)?.lengths.map(l=><span key={l.size} style={{fontSize:12,fontWeight:600,color:T.sub,border:`1px solid ${T.border}`,borderRadius:6,padding:"6px 9px",background:T.cardHi}}>{l.size}: <b style={{color:T.blue}}>{l.qty}</b></span>)}</div></div>}</>}
       {sectionModal.kind==="mesh"&&sectionModal.section==="hardware"&&<Table headers={["Hardware","Total QTY","Reserved","Usable","Unit","Password Code","Action"]}>{inv.meshHardware.map(i=><TR key={i.id}><TD bold>{i.item}</TD><TD bold color={T.blue}>{i.qty}</TD><TD>{i.reserved||0}</TD><TD>{Math.max(Number(i.qty||0)-Number(i.reserved||0),0)}{stockBar(Math.max(Number(i.qty||0)-Number(i.reserved||0),0),i.qty,T.green)}</TD><TD>{i.unit}</TD><TD><Code>{i.code}</Code></TD><TD><RowActions onEdit={()=>openEditInventory("mesh","hardware",i)} onRemove={()=>removeInventory("meshHardware",i.id,i.item,"mesh")} /></TD></TR>)}</Table>}
     </div></Modal>}
-    {inventoryModal&&<Modal title={`${inventoryModal.mode==="edit"?"Edit":"Add"} ${inventoryForm.kind==="mesh"?"Mesh":"Blinds"} Inventory`} onClose={()=>setInventoryModal(null)} wide><div style={{background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14}}><div style={{fontSize:12,fontWeight:800,color:T.muted,marginBottom:8}}>Section</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{(inventoryForm.kind==="mesh"?[["materials","Mesh Material"],["hardware","Mesh Hardware"]]:[["rolls","Blind Fabric Roll"],["components","Blind Component"]]).map(([section,label])=><button key={section} onClick={()=>setInventoryForm(f=>({...f,section}))} style={{border:`1px solid ${inventoryForm.section===section?T.blue:T.border}`,background:inventoryForm.section===section?T.blue:"#fff",color:inventoryForm.section===section?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div></div><div style={{display:"grid",gap:12}}><FormRow cols={2}><Field label="Name"><input value={inventoryForm.name||inventoryForm.item} onChange={e=>setInventoryForm(f=>({...f,name:e.target.value,item:e.target.value}))} /></Field><Field label="Password Code"><input value={inventoryForm.code} onChange={e=>setInventoryForm(f=>({...f,code:e.target.value}))} /></Field></FormRow>{inventoryForm.kind==="blinds"&&inventoryForm.section==="rolls"&&<><Field label="Shade / Colour"><input value={inventoryForm.shade} onChange={e=>setInventoryForm(f=>({...f,shade:e.target.value}))} /></Field><FormRow cols={2}><Field label="Roll Quantity"><input type="number" value={inventoryForm.rolls} onChange={e=>setInventoryForm(f=>({...f,rolls:e.target.value}))} /></Field><Field label="Metre / Roll"><input type="number" value={inventoryForm.metres} onChange={e=>setInventoryForm(f=>({...f,metres:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="blinds"&&inventoryForm.section==="components"&&<><Field label="Details"><input value={inventoryForm.detail} onChange={e=>setInventoryForm(f=>({...f,detail:e.target.value}))} /></Field><FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="materials"&&<><FormRow cols={4}><Field label="Full Stock"><input type="number" value={inventoryForm.full} onChange={e=>setInventoryForm(f=>({...f,full:e.target.value}))} /></Field><Field label="Full Length Ft"><input type="number" value={inventoryForm.fullLengthFt||12} onChange={e=>setInventoryForm(f=>({...f,fullLengthFt:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field><Field label="Cut Earlier"><input type="number" value={inventoryForm.cut} onChange={e=>setInventoryForm(f=>({...f,cut:e.target.value}))} /></Field></FormRow><Field label="Cut Pieces"><input value={inventoryForm.lengthsText} onChange={e=>setInventoryForm(f=>({...f,lengthsText:e.target.value}))} placeholder="7 ft:14, 6.5 ft:9, 5 ft:7" /></Field></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="hardware"&&<FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow>}</div><div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}}><GhostBtn onClick={()=>setInventoryModal(null)}>Cancel</GhostBtn><PrimaryBtn onClick={saveInventory}>{inventoryModal.mode==="edit"?"Save Changes":"Add Inventory"}</PrimaryBtn></div></Modal>}
+    {inventoryModal&&<Modal title={`${inventoryModal.mode==="edit"?"Edit":"Add"} ${inventoryForm.kind==="mesh"?"Mesh":"Blinds"} Inventory`} onClose={()=>setInventoryModal(null)} wide><div style={{background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14}}><div style={{fontSize:12,fontWeight:800,color:T.muted,marginBottom:8}}>Section</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{(inventoryForm.kind==="mesh"?[["materials","Mesh Material"],["hardware","Mesh Hardware"]]:[["rolls","Blind Fabric Roll"],["components","Blind Component"]]).map(([section,label])=><button key={section} onClick={()=>setInventoryForm(f=>({...f,section}))} style={{border:`1px solid ${inventoryForm.section===section?T.blue:T.border}`,background:inventoryForm.section===section?T.blue:"#fff",color:inventoryForm.section===section?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div></div><div style={{display:"grid",gap:12}}><FormRow cols={3}><Field label="Name"><input value={inventoryForm.name||inventoryForm.item} onChange={e=>setInventoryForm(f=>({...f,name:e.target.value,item:e.target.value}))} /></Field><Field label="Password Code"><input value={inventoryForm.code} onChange={e=>setInventoryForm(f=>({...f,code:e.target.value}))} /></Field><Field label="HSN / SAC *"><input value={inventoryForm.hsn||""} onChange={e=>setInventoryForm(f=>({...f,hsn:e.target.value}))} style={!hasHsn(inventoryForm.hsn)?{borderColor:T.red}:null} /></Field></FormRow>{inventoryForm.kind==="blinds"&&inventoryForm.section==="rolls"&&<><Field label="Shade / Colour"><input value={inventoryForm.shade} onChange={e=>setInventoryForm(f=>({...f,shade:e.target.value}))} /></Field><FormRow cols={2}><Field label="Roll Quantity"><input type="number" value={inventoryForm.rolls} onChange={e=>setInventoryForm(f=>({...f,rolls:e.target.value}))} /></Field><Field label="Metre / Roll"><input type="number" value={inventoryForm.metres} onChange={e=>setInventoryForm(f=>({...f,metres:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="blinds"&&inventoryForm.section==="components"&&<><Field label="Details"><input value={inventoryForm.detail} onChange={e=>setInventoryForm(f=>({...f,detail:e.target.value}))} /></Field><FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="materials"&&<><FormRow cols={4}><Field label="Full Stock"><input type="number" value={inventoryForm.full} onChange={e=>setInventoryForm(f=>({...f,full:e.target.value}))} /></Field><Field label="Full Length Ft"><input type="number" value={inventoryForm.fullLengthFt||12} onChange={e=>setInventoryForm(f=>({...f,fullLengthFt:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field><Field label="Cut Earlier"><input type="number" value={inventoryForm.cut} onChange={e=>setInventoryForm(f=>({...f,cut:e.target.value}))} /></Field></FormRow><Field label="Cut Pieces"><input value={inventoryForm.lengthsText} onChange={e=>setInventoryForm(f=>({...f,lengthsText:e.target.value}))} placeholder="7 ft:14, 6.5 ft:9, 5 ft:7" /></Field></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="hardware"&&<FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow>}</div><div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}}><GhostBtn onClick={()=>setInventoryModal(null)}>Cancel</GhostBtn><PrimaryBtn onClick={saveInventory}>{inventoryModal.mode==="edit"?"Save Changes":"Add Inventory"}</PrimaryBtn></div></Modal>}
   </div>;
 }
 function Salesmen({ leads, setLeads, followups, setFollowups, orders, payments, salesmen, setSalesmen }) {
@@ -4049,6 +4086,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
       lineItems:windows.map((w,i)=>({
         label:w.label||`Window ${i+1}`,
         productType:existing.lineItems?.[i]?.productType||existing.productType||quotedProductType(lead),
+        hsn:firstPresent(existing.lineItems?.[i]?.hsn,existing.hsn,w.hsn),
         rate:existing.lineItems?.[i]?.rate ?? baseRate
       }))
     });
@@ -4098,12 +4136,13 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
   };
   const quoteWindows=quoteLead?measurementWindows(quoteLead):[];
   const updateQuoteLine=(idx,patch)=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>i===idx?{...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,...patch}:{...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`})}));
-  const applyQuoteRateToAll=()=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>({...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:q.lineItems?.[i]?.productType||q.productType||quotedProductType(quoteLead),rate:q.rate}))}));
+  const applyQuoteRateToAll=()=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>({...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:q.lineItems?.[i]?.productType||q.productType||quotedProductType(quoteLead),hsn:firstPresent(q.lineItems?.[i]?.hsn,w.hsn),rate:q.rate}))}));
   const saveQuote=()=>{
     if(!quoteLead)return;
     if(quoteLead.paymentMarked||isCpQuoteAccepted(quoteLead))return alert("This quotation is locked and cannot be revised");
-    const lineItems=quoteWindows.map((w,i)=>({...(quote.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:quote.lineItems?.[i]?.productType||quote.productType||quotedProductType(quoteLead),rate:Number(quote.lineItems?.[i]?.rate||quote.rate||0)}));
+    const lineItems=quoteWindows.map((w,i)=>({...(quote.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:quote.lineItems?.[i]?.productType||quote.productType||quotedProductType(quoteLead),hsn:String(firstPresent(quote.lineItems?.[i]?.hsn,w.hsn)).trim(),rate:Number(quote.lineItems?.[i]?.rate||quote.rate||0)}));
     if(lineItems.some(item=>!Number(item.rate)))return alert("Sq ft rate is required for every window/product line");
+    if(lineItems.some(item=>!hasHsn(item.hsn)))return alert(HSN_REQUIRED_MESSAGE);
     const baseQuote={...quote,lineItems,rate:Number(quote.rate||lineItems[0]?.rate||0),productType:quote.productType||quotedProductType(quoteLead)};
     const totals=quoteTotals(quoteLead,baseQuote);
     const quotation={...baseQuote,lineItems:totals.lines.map((line,i)=>({...lineItems[i],sqft:line.chargeableSqft,amount:line.amount})),discount:totals.discountPct,gst:totals.gstPct,gstAmount:totals.gstAmount,taxable:totals.taxable,amount:Math.round(totals.total),date:todayStr(),locked:true};
@@ -4247,9 +4286,10 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
             const rate=Number(line.rate||quote.rate||0);
             const amount=lineChargeableSqft(w)*rate;
             return <div key={i} style={{border:`1px solid ${T.border}`,borderRadius:8,padding:12,background:T.cardHi}}>
-              <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 120px 130px",gap:10,alignItems:"end"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 120px 120px 130px",gap:10,alignItems:"end"}}>
                 <div style={{fontSize:12,color:T.sub}}><b style={{color:T.text}}>{w.label||`Window ${i+1}`}</b><div style={{marginTop:3}}>{w.material||"-"} | {w.color||"-"} | {lineChargeableSqft(w)} SQFT</div></div>
                 <Field label="Product / Material"><input value={line.productType||quote.productType||quotedProductType(quoteLead)} onChange={e=>updateQuoteLine(i,{productType:e.target.value})} /></Field>
+                <Field label="HSN / SAC *"><input value={line.hsn||""} onChange={e=>updateQuoteLine(i,{hsn:e.target.value})} style={!hasHsn(line.hsn)?{borderColor:T.red}:null} /></Field>
                 <Field label="Rate / SQFT *"><input type="number" value={line.rate ?? quote.rate ?? ""} onChange={e=>updateQuoteLine(i,{rate:e.target.value})} /></Field>
                 <div style={{fontSize:12,color:T.sub,paddingBottom:9}}>Amount: <b style={{color:T.green}}>{inr(amount)}</b></div>
               </div>
