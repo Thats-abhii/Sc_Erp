@@ -472,6 +472,37 @@ const openQuotationPdf = (lead, quote) => {
   win.document.close();
 };
 
+const openCpRequestPdf = (partner, req) => {
+  const win=window.open("","_blank");
+  if(!win)return alert("Please allow popups to view the channel partner request PDF");
+  const logoUrl=new URL(BRAND.logo, window.location.href).href;
+  const windows=(req.windows||req.measurement?.windows||[]).map((raw,i)=>enrichMeasurementLine({...raw,label:raw.label||`Window ${i+1}`}));
+  const totalSqft=windows.reduce((sum,w)=>sum+Number(w.chargeableSqft||w.sqft||0),0);
+  win.document.write(`<!doctype html><html><head><title>CP Request ${req.id}</title><style>
+    *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111827;margin:0;padding:28px;background:#fff}
+    .head{display:flex;justify-content:space-between;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px;margin-bottom:18px}
+    .brand{display:flex;gap:12px;align-items:center}.logo{width:58px;height:58px;object-fit:contain;background:#050505;border-radius:8px;padding:6px}
+    h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280;font-size:12px;line-height:1.55}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+    .box{border:1px solid #d1d5db;border-radius:8px;padding:12px;font-size:13px;line-height:1.6}.title{font-size:12px;font-weight:800;color:#374151;text-transform:uppercase;margin-bottom:6px}
+    table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#f3f4f6}
+    .footer{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;color:#374151}@media print{button{display:none}body{padding:18px}}
+  </style></head><body>
+    <button onclick="window.print()" style="float:right;margin-bottom:12px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:700">Print / Save PDF</button>
+    <div class="head"><div class="brand"><img class="logo" src="${logoUrl}" /><div><h1>${BRAND.name}</h1><div class="muted">${BRAND.appName}<br/>${BRAND.website}</div></div></div><div><b>CHANNEL PARTNER ORDER REQUEST</b><br/><span class="muted">Request ID: ${req.id||"-"}<br/>Date: ${req.date||todayStr()}<br/>Status: ${req.status||req.approval||"Pending"}</span></div></div>
+    <div class="grid">
+      <div class="box"><div class="title">Channel Partner</div><b>${partner?.name||"-"}</b><br/>Owner: ${partner?.owner||"-"}<br/>Mobile: ${partner?.mobile||"-"}<br/>City: ${partner?.city||"-"}</div>
+      <div class="box"><div class="title">Customer / Site</div><b>${req.customer||"-"}</b><br/>Mobile: ${req.mobile||"-"}<br/>Project: ${req.project||"-"}<br/>Product: ${req.product||"-"}</div>
+    </div>
+    <div class="box"><div class="title">Request Notes</div>${req.notes||"-"}</div>
+    <table><thead><tr><th>#</th><th>Window</th><th>Height</th><th>Width</th><th>Qty</th><th>Actual SQFT</th><th>Billing SQFT</th><th>Material / Color / Code</th></tr></thead><tbody>
+      ${windows.map((w,i)=>`<tr><td>${i+1}</td><td>${w.label||`Window ${i+1}`}</td><td>${w.height||"-"} ${w.heightUnit||"Feet"}</td><td>${w.width||"-"} ${w.widthUnit||"Feet"}</td><td>${w.qty||1}</td><td>${w.sqft||0}</td><td>${w.chargeableSqft||w.sqft||0}</td><td>${w.material||"-"} / ${w.color||"-"} / ${w.code||"-"}</td></tr>`).join("")}
+    </tbody></table>
+    <div class="grid"><div class="box"><div class="title">Total Billing SQFT</div><b>${totalSqft}</b></div><div class="box"><div class="title">Approval Use</div>Review this exact request before Accept / Reject.</div></div>
+    <div class="footer"><span>Checked By Management</span><span>For ${BRAND.name}</span></div>
+  </body></html>`);
+  win.document.close();
+};
+
 const billTotals = order => {
   const gross=(order.products||[]).reduce((s,p)=>s+Number(p.total||0),0);
   const discountPct=Number(order.discount||0);
@@ -1006,6 +1037,9 @@ function Leads({ leads, setLeads, orders, setOrders, payments, setPayments, foll
     if(!confirm(`Move ${lead.name} to Rejected Leads?`))return;
     const stamp=new Date().toISOString();
     setLeads(ls=>ls.map(l=>l.id===lead.id?{...l,status:"Rejected",rejectedAt:stamp,updated:todayStr(),updatedAt:stamp}:l));
+    if(lead.channelPartnerId&&lead.partnerRequestId){
+      setPartners?.(ps=>ps.map(p=>p.id===lead.channelPartnerId?{...p,requests:(p.requests||[]).map(r=>r.id===lead.partnerRequestId?{...r,status:"Rejected By Management",leadStatus:"Rejected"}:r)}:p));
+    }
     setFollowups?.(fs=>fs.filter(f=>f.leadId!==lead.id));
     setShowDetail(d=>d&&d.id===lead.id?{...d,status:"Rejected",rejectedAt:stamp,updated:todayStr()}:d);
   };
@@ -1014,9 +1048,19 @@ function Leads({ leads, setLeads, orders, setOrders, payments, setPayments, foll
     const stamp=new Date().toISOString();
     setLeads(ls=>ls.map(l=>{
       if(l.id!==reassignRejected.lead.id)return l;
+      const linkedReq=linkedRequest(l);
+      const cpDraftMeasurement=l.measurement||linkedReq?.measurement||null;
       const {rejectedAt,contactDone,svDone,measurement,quotation,paymentMarked,paymentStatus,paymentPaid,paymentBalance,paymentOrderId,followupReason,...rest}=l;
-      return {...rest,status:"New",salesman:Number(reassignRejected.salesman),notes:l.notes||"",reassignedAt:stamp,assignedAt:stamp,updated:todayStr(),updatedAt:stamp};
+      return {...rest,status:"New",salesman:Number(reassignRejected.salesman),notes:l.notes||"",cpDraftMeasurement,reassignedAt:stamp,assignedAt:stamp,updated:todayStr(),updatedAt:stamp};
     }));
+    const lead=reassignRejected.lead;
+    if(lead.channelPartnerId&&lead.partnerRequestId){
+      setPartners?.(ps=>ps.map(p=>p.id===lead.channelPartnerId?{...p,requests:(p.requests||[]).map(r=>{
+        if(r.id!==lead.partnerRequestId)return r;
+        const {quotation,cpAccepted,cpAcceptedDate,...safe}=r;
+        return {...safe,quotationAmount:0,paid:0,balance:0,status:"Reassigned - Salesman Visit Pending",leadStatus:"New",stage:"Salesman Visit Pending",pdfReady:false};
+      })}:p));
+    }
     setReassignRejected(null);
     setShowRejected(false);
   };
@@ -3590,8 +3634,8 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
           {[...(selected.transactions||[]),...requestBusinessRows(selected)].map(t=><TR key={t.id}><TD>{t.date}</TD><TD bold>{t.project}{t.isRequestBusiness&&<div style={{fontSize:11,color:T.muted}}>{t.customer} | {t.mobile} | {t.product} | {(t.windows||[]).length} window(s)</div>}</TD><TD>{inr(t.business)}</TD><TD color={Number(t.paid||0)>0?T.green:T.red}>{inr(t.paid)}</TD><TD color={Number(t.business)-Number(t.paid)>0?T.red:T.green} bold>{inr(Math.max(Number(t.business)-Number(t.paid),0))}</TD><TD><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{t.isRequestBusiness?<EditActionBtn onClick={()=>editRequestPayment(selected,t)}>Edit</EditActionBtn>:!isManager&&<EditActionBtn onClick={()=>openEditBusiness(selected,t)}>Edit</EditActionBtn>}</div></TD></TR>)}
         </Table>
         <div style={{fontSize:13,fontWeight:800,color:T.text,margin:"18px 0 10px"}}>Order Requests</div>
-        <Table headers={["Date","Project","Business","Paid","Pending","Status","Action"]}>
-          {visibleOrderRequests(selected).map(r=><TR key={r.id}><TD>{r.date}</TD><TD bold>{r.project}<div style={{fontSize:11,color:T.muted}}>{r.customer} | {r.mobile} | {r.product} | {(r.windows||[]).length} window(s)</div></TD><TD bold color={T.orange}>Waiting for approval</TD><TD color={T.red} bold>{inr(0)}</TD><TD color={T.orange} bold>Pending quote</TD><TD><Pill label={r.status} color={T.orange} /></TD><TD><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><PrimaryBtn small onClick={()=>openAcceptRequest(selected,r)}>Accept</PrimaryBtn><DangerBtn small onClick={()=>rejectRequest(selected,r)}>Reject</DangerBtn></div></TD></TR>)}
+        <Table headers={["Date","Project","Business","Paid","Pending","Status","Request","Action"]}>
+          {visibleOrderRequests(selected).map(r=><TR key={r.id}><TD>{r.date}</TD><TD bold>{r.project}<div style={{fontSize:11,color:T.muted}}>{r.customer} | {r.mobile} | {r.product} | {(r.windows||[]).length} window(s)</div></TD><TD bold color={T.orange}>Waiting for approval</TD><TD color={T.red} bold>{inr(0)}</TD><TD color={T.orange} bold>Pending quote</TD><TD><Pill label={r.status} color={T.orange} /></TD><TD><GhostBtn small onClick={()=>openCpRequestPdf(selected,r)}>PDF</GhostBtn></TD><TD><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><PrimaryBtn small onClick={()=>openAcceptRequest(selected,r)}>Accept</PrimaryBtn><DangerBtn small onClick={()=>rejectRequest(selected,r)}>Reject</DangerBtn></div></TD></TR>)}
         </Table>
         {visibleOrderRequests(selected).length===0&&<div style={{padding:32,textAlign:"center",fontSize:13,color:T.muted}}>No pending order request for approval.</div>}
       </Modal>}
@@ -3600,13 +3644,18 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
         <div style={{background:T.cardHi,border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:T.sub}}>
           <b style={{color:T.text}}>{approval.req.customer}</b> | {approval.req.project} | {approval.req.product}
         </div>
+        <GlassCard style={{padding:0,marginBottom:14}}>
+          <Table headers={["Window","Size","Qty","SQFT","Material / Color / Code"]}>
+            {(approval.req.windows||approval.req.measurement?.windows||[]).map((raw,i)=>{ const w=enrichMeasurementLine(raw); return <TR key={i}><TD bold>{w.label||`Window ${i+1}`}</TD><TD>{w.height||"-"} {w.heightUnit||"Feet"} x {w.width||"-"} {w.widthUnit||"Feet"}</TD><TD>{w.qty||1}</TD><TD>{w.chargeableSqft||w.sqft||0}</TD><TD>{w.material||"-"} / {w.color||"-"} / {w.code||"-"}</TD></TR>; })}
+          </Table>
+        </GlassCard>
         <Field label="Assign Salesman"><select value={approvalForm.salesman} onChange={e=>setApprovalForm(f=>({...f,salesman:Number(e.target.value)}))}>{salesmen.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
         <FormRow cols={3}>
           <Field label="Measurement Date"><input type="date" value={approvalForm.measurementDate} onChange={e=>setApprovalForm(f=>({...f,measurementDate:e.target.value}))} /></Field>
           <Field label="Production Date"><input type="date" value={approvalForm.productionDate} onChange={e=>setApprovalForm(f=>({...f,productionDate:e.target.value}))} /></Field>
           <Field label="Installation Date"><input type="date" value={approvalForm.installationDate} onChange={e=>setApprovalForm(f=>({...f,installationDate:e.target.value}))} /></Field>
         </FormRow>
-        <div style={{display:"flex",gap:10,marginTop:18}}><PrimaryBtn onClick={acceptRequest} disabled={savingApproval}>{savingApproval?"Processing...":"Accept & Send To Lead Management"}</PrimaryBtn><GhostBtn onClick={()=>setApproval(null)}>Cancel</GhostBtn></div>
+        <div style={{display:"flex",gap:10,marginTop:18}}><GhostBtn onClick={()=>openCpRequestPdf(approval.partner,approval.req)}>View Request PDF</GhostBtn><PrimaryBtn onClick={acceptRequest} disabled={savingApproval}>{savingApproval?"Processing...":"Accept & Send To Lead Management"}</PrimaryBtn><GhostBtn onClick={()=>setApproval(null)}>Cancel</GhostBtn></div>
       </Modal>}
 
       {showPartner&&<Modal title={selected?"Edit Channel Partner":"Add Channel Partner"} onClose={()=>{setShowPartner(false);setSelected(null);}}>
@@ -3912,18 +3961,23 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
     setPartners?.(ps=>ps.map(p=>p.id===lead.channelPartnerId?{...p,requests:(p.requests||[]).map(r=>r.id===lead.partnerRequestId?{...r,...patch}:r)}:p));
   };
   const canQuoteLead=lead=>!!lead.measurement&&!lead.paymentMarked&&!partnerRequestFor(lead)?.cpAccepted;
-  const canMarkPayment=lead=>!!lead.quotation&&!lead.paymentMarked&&(!lead.channelPartnerId||partnerRequestFor(lead)?.cpAccepted);
+  const canMarkPayment=lead=>!!lead.quotation&&!lead.paymentMarked&&!lead.channelPartnerId;
   const updateLead=(id,patch)=>setLeads(ls=>ls.map(l=>l.id===id?{...l,...patch,updated:todayStr(),updatedAt:new Date().toISOString()}:l));
   const markContacted=lead=>{ if(lead.contactDone)return; updateLead(lead.id,{contactDone:true,status:"Contacted"}); };
   const markSv=lead=>{ if(lead.svDone)return; updateLead(lead.id,{svDone:true,status:"Site Visit Scheduled"}); };
-  const openMeasurement=lead=>{ if(lead.measurement)return; setMeasurementLead(lead); setMeasurement(lead.measurement||{...blankMeasurement,type:lead.product?.toLowerCase().includes("mesh")?"Mesh":"Blind",windows:[blankWindow]}); };
+  const openMeasurement=lead=>{
+    if(lead.measurement)return;
+    const draft=lead.cpDraftMeasurement||partnerRequestFor(lead)?.measurement;
+    setMeasurementLead(lead);
+    setMeasurement(draft?{...draft,budget:draft.budget||lead.budget||"",windows:(draft.windows||[blankWindow]).map((w,i)=>({...w,label:w.label||`Window ${i+1}`}))}:{...blankMeasurement,type:lead.product?.toLowerCase().includes("mesh")?"Mesh":"Blind",windows:[blankWindow]});
+  };
   const saveMeasurement=()=>{
     if(!measurementLead)return;
     if(!measurement.budget)return alert("Budget is required");
     const windows=(measurement.windows||[]).map((w,i)=>enrichMeasurementLine({...w,label:w.label||`Window ${i+1}`,qty:Number(w.qty||1)}));
     const measurementError=validateMeasurementRows(windows);
     if(measurementError)return alert(measurementError);
-    updateLead(measurementLead.id,{measurement:{...measurement,windows},budget:Number(measurement.budget),status:"Site Visit Scheduled"});
+    updateLead(measurementLead.id,{measurement:{...measurement,windows},cpDraftMeasurement:null,budget:Number(measurement.budget),status:"Site Visit Scheduled"});
     setMeasurementLead(null); setMeasurement(blankMeasurement);
   };
   const updateWindow=(idx,patch)=>setMeasurement(m=>({...m,windows:(m.windows||[]).map((w,i)=>i===idx?{...w,...patch}:w)}));
@@ -4502,11 +4556,14 @@ function LoginScreen({ onLogin }) {
       setLoggingIn("");
     }
   };
-  const LoginButton=({ color, loadingKey, children })=>(
-    <PrimaryBtn color={color} disabled={loggingIn===loadingKey}>
-      {loggingIn===loadingKey ? <><ButtonSpinner /> Checking...</> : children}
+  const LoginButton=({ color, loadingKey, children })=>{
+    const loading = loggingIn && (!loadingKey || loggingIn===loadingKey);
+    return (
+    <PrimaryBtn color={color} disabled={Boolean(loggingIn)}>
+      {loading ? <><ButtonSpinner /> Checking...</> : children}
     </PrimaryBtn>
-  );
+    );
+  };
   const submitManagement=e=>submitBackendLogin(e,managementLogin,"management","management",setManagementError,"management");
   const submitSalesman=e=>submitBackendLogin(e,salesLogin,"salesman","salesman",setSalesError,"salesman");
   const submitPartner=e=>submitBackendLogin(e,partnerLogin,"channel_partner","channelPartner",setPartnerError,"partner");
@@ -4546,7 +4603,7 @@ function LoginScreen({ onLogin }) {
             <input value={portal.form.loginId} onChange={e=>portal.setForm(f=>({...f,loginId:e.target.value}))} placeholder={portal.idPlaceholder} autoComplete="username" />
             <input type="password" value={portal.form.password} onChange={e=>portal.setForm(f=>({...f,password:e.target.value}))} placeholder="Password" autoComplete="current-password" />
             {portal.error&&<div style={{fontSize:12,color:T.red}}>{portal.error}</div>}
-            <LoginButton color={portal.color} loadingKey={loginPortal==="channelPartner"?"partner":loginPortal}>{portal.button}</LoginButton>
+            <LoginButton color={portal.color}>{portal.button}</LoginButton>
           </div>
         </form>
       </div>
@@ -4616,7 +4673,7 @@ function LoginScreen({ onLogin }) {
             <input value={popup.form.loginId} onChange={e=>popup.setForm(f=>({...f,loginId:e.target.value}))} placeholder={popup.idPlaceholder} autoComplete="username" />
             <input type="password" value={popup.form.password} onChange={e=>popup.setForm(f=>({...f,password:e.target.value}))} placeholder="Password" autoComplete="current-password" />
             {popup.error&&<div style={{fontSize:12,color:T.red}}>{popup.error}</div>}
-            <LoginButton color={popup.color} loadingKey={loginModal==="partner"?"partner":loginModal}>{popup.button}</LoginButton>
+            <LoginButton color={popup.color}>{popup.button}</LoginButton>
           </div>
         </form>
       </div>}
