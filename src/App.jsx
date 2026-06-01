@@ -3453,6 +3453,15 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
   });
   const totals=partners.reduce((acc,p)=>{ const s=summarize(p); acc.mtd+=s.mtd; acc.ytd+=s.ytd; acc.collected+=s.totalPaid; acc.pending+=s.pending; return acc; },{mtd:0,ytd:0,collected:0,pending:0});
   const pendingPartners=partners.filter(hasPendingRequest);
+  const cpRequestSummary=req=>{
+    const windows=(req.windows||req.measurement?.windows||[]).map((raw,i)=>enrichMeasurementLine({...raw,label:raw.label||`Window ${i+1}`}));
+    return {
+      windows,
+      qty:windows.reduce((sum,w)=>sum+Number(w.qty||1),0),
+      actualSqft:round2(windows.reduce((sum,w)=>sum+Number(w.sqft||0),0)),
+      billingSqft:round2(windows.reduce((sum,w)=>sum+Number(w.chargeableSqft||w.sqft||0),0))
+    };
+  };
   const partnerMatches=p=>{
     const q=partnerSearch.trim().toLowerCase();
     if(!q)return true;
@@ -3640,15 +3649,31 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
         {visibleOrderRequests(selected).length===0&&<div style={{padding:32,textAlign:"center",fontSize:13,color:T.muted}}>No pending order request for approval.</div>}
       </Modal>}
 
-      {approval&&<Modal title="Accept Channel Partner Order" onClose={()=>setApproval(null)}>
+      {approval&&(()=>{ const summary=cpRequestSummary(approval.req); return <Modal title="Review Channel Partner Order Request" onClose={()=>setApproval(null)} wide>
         <div style={{background:T.cardHi,border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:T.sub}}>
-          <b style={{color:T.text}}>{approval.req.customer}</b> | {approval.req.project} | {approval.req.product}
+          <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+            <div>
+              <b style={{color:T.text,fontSize:15}}>{approval.req.customer}</b>
+              <div style={{marginTop:4}}>{approval.req.mobile} | {approval.req.project} | {approval.req.product}</div>
+              <div style={{marginTop:4}}>Channel Partner: <b style={{color:T.text}}>{approval.partner.name}</b> | Request: <b style={{color:T.text}}>{approval.req.id}</b></div>
+            </div>
+            <GhostBtn small onClick={()=>openCpRequestPdf(approval.partner,approval.req)}>Print / Save PDF</GhostBtn>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
+          <StatKPI label="Windows" value={summary.windows.length} accent={T.blue} />
+          <StatKPI label="Total Qty" value={summary.qty} accent={T.teal} />
+          <StatKPI label="Actual SQFT" value={summary.actualSqft} accent={T.orange} />
+          <StatKPI label="Billing SQFT" value={summary.billingSqft} accent={T.green} />
         </div>
         <GlassCard style={{padding:0,marginBottom:14}}>
-          <Table headers={["Window","Size","Qty","SQFT","Material / Color / Code"]}>
-            {(approval.req.windows||approval.req.measurement?.windows||[]).map((raw,i)=>{ const w=enrichMeasurementLine(raw); return <TR key={i}><TD bold>{w.label||`Window ${i+1}`}</TD><TD>{w.height||"-"} {w.heightUnit||"Feet"} x {w.width||"-"} {w.widthUnit||"Feet"}</TD><TD>{w.qty||1}</TD><TD>{w.chargeableSqft||w.sqft||0}</TD><TD>{w.material||"-"} / {w.color||"-"} / {w.code||"-"}</TD></TR>; })}
+          <Table headers={["Window","Height","Width","Qty","Actual SQFT","Billing SQFT","Material / Color / Code"]}>
+            {summary.windows.map((w,i)=><TR key={i}><TD bold>{w.label||`Window ${i+1}`}</TD><TD>{w.height||"-"} {w.heightUnit||"Feet"}</TD><TD>{w.width||"-"} {w.widthUnit||"Feet"}</TD><TD>{w.qty||1}</TD><TD>{w.sqft||0}</TD><TD bold color={T.green}>{w.chargeableSqft||w.sqft||0}</TD><TD>{w.material||"-"} / {w.color||"-"} / {w.code||"-"}</TD></TR>)}
           </Table>
         </GlassCard>
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:"#92400e"}}>
+          Check the above CP-filled order form first. After this, assign salesman and dates.
+        </div>
         <Field label="Assign Salesman"><select value={approvalForm.salesman} onChange={e=>setApprovalForm(f=>({...f,salesman:Number(e.target.value)}))}>{salesmen.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
         <FormRow cols={3}>
           <Field label="Measurement Date"><input type="date" value={approvalForm.measurementDate} onChange={e=>setApprovalForm(f=>({...f,measurementDate:e.target.value}))} /></Field>
@@ -3656,7 +3681,7 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
           <Field label="Installation Date"><input type="date" value={approvalForm.installationDate} onChange={e=>setApprovalForm(f=>({...f,installationDate:e.target.value}))} /></Field>
         </FormRow>
         <div style={{display:"flex",gap:10,marginTop:18}}><GhostBtn onClick={()=>openCpRequestPdf(approval.partner,approval.req)}>View Request PDF</GhostBtn><PrimaryBtn onClick={acceptRequest} disabled={savingApproval}>{savingApproval?"Processing...":"Accept & Send To Lead Management"}</PrimaryBtn><GhostBtn onClick={()=>setApproval(null)}>Cancel</GhostBtn></div>
-      </Modal>}
+      </Modal>; })()}
 
       {showPartner&&<Modal title={selected?"Edit Channel Partner":"Add Channel Partner"} onClose={()=>{setShowPartner(false);setSelected(null);}}>
         <Field label="Partner Name"><input value={partnerForm.name} onChange={e=>setPartnerForm(f=>({...f,name:e.target.value}))} /></Field>
@@ -3936,6 +3961,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
   const [measurementLead,setMeasurementLead]=useState(null);
   const [quoteLead,setQuoteLead]=useState(null);
   const [paymentLead,setPaymentLead]=useState(null);
+  const [quoteAfterMeasurementLeadId,setQuoteAfterMeasurementLeadId]=useState(null);
   const blankWindow={label:"Window 1",height:"",heightUnit:"Feet",width:"",widthUnit:"Feet",qty:1,color:"",material:""};
   const blankMeasurement={type:"Blind",windows:[blankWindow],budget:"",notes:""};
   const [measurement,setMeasurement]=useState(blankMeasurement);
@@ -3965,11 +3991,31 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
   const updateLead=(id,patch)=>setLeads(ls=>ls.map(l=>l.id===id?{...l,...patch,updated:todayStr(),updatedAt:new Date().toISOString()}:l));
   const markContacted=lead=>{ if(lead.contactDone)return; updateLead(lead.id,{contactDone:true,status:"Contacted"}); };
   const markSv=lead=>{ if(lead.svDone)return; updateLead(lead.id,{svDone:true,status:"Site Visit Scheduled"}); };
-  const openMeasurement=lead=>{
-    if(lead.measurement)return;
+  const beginQuote=lead=>{
+    const existing=lead.quotation||{};
+    const windows=measurementWindows(lead);
+    const baseRate=existing.rate||"";
+    setQuoteLead(lead);
+    setQuote({
+      rate:baseRate,
+      discount:existing.discount||0,
+      gst:existing.gst ?? 18,
+      productType:existing.productType||quotedProductType(lead),
+      notes:existing.notes||"",
+      lineItems:windows.map((w,i)=>({
+        label:w.label||`Window ${i+1}`,
+        productType:existing.lineItems?.[i]?.productType||existing.productType||quotedProductType(lead),
+        rate:existing.lineItems?.[i]?.rate ?? baseRate
+      }))
+    });
+  };
+  const openMeasurement=(lead,continueToQuote=false)=>{
+    if(lead.measurement&&!lead.channelPartnerId&&!continueToQuote)return;
     const draft=lead.cpDraftMeasurement||partnerRequestFor(lead)?.measurement;
     setMeasurementLead(lead);
-    setMeasurement(draft?{...draft,budget:draft.budget||lead.budget||"",windows:(draft.windows||[blankWindow]).map((w,i)=>({...w,label:w.label||`Window ${i+1}`}))}:{...blankMeasurement,type:lead.product?.toLowerCase().includes("mesh")?"Mesh":"Blind",windows:[blankWindow]});
+    setQuoteAfterMeasurementLeadId(continueToQuote?lead.id:null);
+    const sourceMeasurement=lead.measurement||draft;
+    setMeasurement(sourceMeasurement?{...sourceMeasurement,budget:sourceMeasurement.budget||lead.budget||"",windows:(sourceMeasurement.windows||[blankWindow]).map((w,i)=>({...w,label:w.label||`Window ${i+1}`}))}:{...blankMeasurement,type:lead.product?.toLowerCase().includes("mesh")?"Mesh":"Blind",windows:[blankWindow]});
   };
   const saveMeasurement=()=>{
     if(!measurementLead)return;
@@ -3977,8 +4023,11 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
     const windows=(measurement.windows||[]).map((w,i)=>enrichMeasurementLine({...w,label:w.label||`Window ${i+1}`,qty:Number(w.qty||1)}));
     const measurementError=validateMeasurementRows(windows);
     if(measurementError)return alert(measurementError);
-    updateLead(measurementLead.id,{measurement:{...measurement,windows},cpDraftMeasurement:null,budget:Number(measurement.budget),status:"Site Visit Scheduled"});
-    setMeasurementLead(null); setMeasurement(blankMeasurement);
+    const updatedLead={...measurementLead,measurement:{...measurement,windows},cpDraftMeasurement:null,budget:Number(measurement.budget),status:"Site Visit Scheduled"};
+    updateLead(measurementLead.id,{measurement:updatedLead.measurement,cpDraftMeasurement:null,budget:updatedLead.budget,status:"Site Visit Scheduled"});
+    const shouldQuote=quoteAfterMeasurementLeadId===measurementLead.id;
+    setMeasurementLead(null); setMeasurement(blankMeasurement); setQuoteAfterMeasurementLeadId(null);
+    if(shouldQuote)beginQuote(updatedLead);
   };
   const updateWindow=(idx,patch)=>setMeasurement(m=>({...m,windows:(m.windows||[]).map((w,i)=>i===idx?{...w,...patch}:w)}));
   const applyInventoryChoice=(idx,value)=>{
@@ -3997,22 +4046,11 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
     if(!lead.measurement)return alert("Please fill measurement first");
     if(lead.paymentMarked)return alert("Payment is already marked, quotation cannot be revised");
     if(partnerRequestFor(lead)?.cpAccepted)return alert("Channel partner already accepted this quotation, it cannot be revised");
-    const existing=lead.quotation||{};
-    const windows=measurementWindows(lead);
-    const baseRate=existing.rate||"";
-    setQuoteLead(lead);
-    setQuote({
-      rate:baseRate,
-      discount:existing.discount||0,
-      gst:existing.gst ?? 18,
-      productType:existing.productType||quotedProductType(lead),
-      notes:existing.notes||"",
-      lineItems:windows.map((w,i)=>({
-        label:w.label||`Window ${i+1}`,
-        productType:existing.lineItems?.[i]?.productType||existing.productType||quotedProductType(lead),
-        rate:existing.lineItems?.[i]?.rate ?? baseRate
-      }))
-    });
+    if(lead.channelPartnerId){
+      openMeasurement(lead,true);
+      return;
+    }
+    beginQuote(lead);
   };
   const quoteWindows=quoteLead?measurementWindows(quoteLead):[];
   const updateQuoteLine=(idx,patch)=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>i===idx?{...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,...patch}:{...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`})}));
@@ -4099,6 +4137,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
               {!lead.contactDone&&<PrimaryBtn small onClick={()=>markContacted(lead)}>Mark Contacted</PrimaryBtn>}
               {!lead.svDone&&<PrimaryBtn small color={T.orange} onClick={()=>markSv(lead)}>Mark SV Done</PrimaryBtn>}
               {!lead.measurement&&<PrimaryBtn small color={T.teal} onClick={()=>openMeasurement(lead)}>Fill Measurement</PrimaryBtn>}
+              {lead.channelPartnerId&&lead.measurement&&canQuoteLead(lead)&&<GhostBtn small onClick={()=>openMeasurement(lead,false)}>Edit CP Form</GhostBtn>}
               {canQuoteLead(lead)&&<PrimaryBtn small color={T.purple} onClick={()=>openQuote(lead)}>{lead.quotation?"Revise Quotation":"Generate Quotation"}</PrimaryBtn>}
               {canMarkPayment(lead)&&<SuccessBtn small onClick={()=>openPayment(lead)}>Mark Payment Done</SuccessBtn>}
               {lead.quotation&&<GhostBtn small onClick={()=>openQuotationPdf(lead,lead.quotation)}>Download PDF</GhostBtn>}
@@ -4109,7 +4148,10 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
         {assigned.length===0&&<div style={{textAlign:"center",padding:50,color:T.muted}}>No leads assigned to you.</div>}
       </div>
 
-      {measurementLead&&<Modal title="Fill Measurement" onClose={()=>setMeasurementLead(null)} wide>
+      {measurementLead&&<Modal title={measurementLead.channelPartnerId?"Review / Edit CP Order Form":"Fill Measurement"} onClose={()=>{setMeasurementLead(null);setQuoteAfterMeasurementLeadId(null);}} wide>
+        {measurementLead.channelPartnerId&&<div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:12,marginBottom:14,fontSize:13,color:"#1d4ed8"}}>
+          This is the exact form filled by the Channel Partner. Review it, change qty/size/material if required, then continue to quotation.
+        </div>}
         <FormRow cols={2}>
           <Field label="Product Type"><select value={measurement.type} onChange={e=>setMeasurement(m=>({...m,type:e.target.value}))}>{["Mesh","Blind"].map(v=><option key={v}>{v}</option>)}</select></Field>
           <Field label="Budget *"><input type="number" value={measurement.budget} onChange={e=>setMeasurement(m=>({...m,budget:e.target.value}))} /></Field>
@@ -4136,7 +4178,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
         </div>
         <div style={{marginTop:10}}><GhostBtn onClick={addWindow}>+ Add Window Measurement</GhostBtn></div>
         <div style={{marginTop:12}}><Field label="Notes"><textarea rows={2} value={measurement.notes} onChange={e=>setMeasurement(m=>({...m,notes:e.target.value}))} /></Field></div>
-        <div style={{display:"flex",gap:10,marginTop:18}}><PrimaryBtn onClick={saveMeasurement}>Lock Measurement</PrimaryBtn><GhostBtn onClick={()=>setMeasurementLead(null)}>Cancel</GhostBtn></div>
+        <div style={{display:"flex",gap:10,marginTop:18}}><PrimaryBtn onClick={saveMeasurement}>{quoteAfterMeasurementLeadId?"Save Form & Continue Quotation":"Lock Measurement"}</PrimaryBtn><GhostBtn onClick={()=>{setMeasurementLead(null);setQuoteAfterMeasurementLeadId(null);}}>Cancel</GhostBtn></div>
       </Modal>}
 
       {quoteLead&&<Modal title="Generate Quotation" onClose={()=>setQuoteLead(null)} wide>
