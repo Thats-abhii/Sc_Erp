@@ -456,14 +456,14 @@ const openQuotationPdf = (lead, quote) => {
     body{font-family:Arial,sans-serif;color:#111827;margin:0;padding:28px;background:#f8fafc}
     .page{background:#fff;border:1px solid #e5e7eb;padding:28px;max-width:920px;margin:auto}
     .head{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid #1a3c5e;padding-bottom:16px;margin-bottom:22px}
-    .brand{display:flex;gap:14px;align-items:flex-start}.logoBox{width:132px;height:132px;background:transparent;border:0;border-radius:0;box-shadow:none;display:flex;align-items:center;justify-content:center;padding:0;overflow:visible}.logo{width:132px;height:132px;object-fit:contain;object-position:center;border:0;border-radius:0;box-shadow:none;background:transparent;display:block}
+    .brand{display:flex;gap:14px;align-items:flex-start}.logo{width:132px;height:132px;object-fit:contain;object-position:center;border:0;border-radius:0;box-shadow:none;background:transparent;display:block}
     h1{margin:0;color:#1a3c5e;font-size:28px}.muted{color:#6b7280;font-size:12px;line-height:1.5}.box{border:1px solid #d1d5db;border-radius:8px;padding:14px;margin:14px 0;background:#fff}
     table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}th,td{border:1px solid #d1d5db;padding:9px;text-align:left;vertical-align:top}th{background:#eff6ff;color:#1a3c5e}
     .summary{margin-left:auto;width:320px}.summary div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb}.total{font-size:20px;font-weight:700;color:#16a34a;text-align:right;margin-top:12px}.small{font-size:11px;color:#6b7280}@media print{button{display:none}body{background:#fff}.page{border:0}}
   </style></head><body>
     <div class="page">
     <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
-    <div class="head"><div class="brand"><div class="logoBox"><img class="logo" src="${quotationLogoUrl}" onerror="this.replaceWith(document.createTextNode('Smart Covering'))" /></div><div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
+    <div class="head"><div class="brand"><img class="logo" src="${quotationLogoUrl}" onerror="this.replaceWith(document.createTextNode('Smart Covering'))" /><div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
     <div class="box"><b>Customer Details</b><br/>${lead.name}<br/>${lead.mobile}<br/>${lead.email||""}<br/>${lead.location||""}</div>
     <table><thead><tr><th>#</th><th>Product</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
       ${lines.map((line,i)=>`<tr><td>${i+1}</td><td>${line.productType||productType}</td><td>${line.label||`Window ${i+1}`}<br/><span class="muted">Actual: ${lineAreaSqft(line)} SQFT</span></td><td>${line.color||"-"}</td><td>${line.material||"-"}</td><td>${lineChargeableSqft(line)}</td><td>${inr(Number(line.rate||0))}</td><td>${gstPct}%</td><td>${inr(line.amount||0)}</td></tr>`).join("")}
@@ -1054,14 +1054,14 @@ function Leads({ leads, setLeads, orders, setOrders, payments, setPayments, foll
       if(l.id!==reassignRejected.lead.id)return l;
       const linkedReq=linkedRequest(l);
       const cpDraftMeasurement=l.measurement||linkedReq?.measurement||null;
-      const {rejectedAt,contactDone,svDone,measurement,quotation,paymentMarked,paymentStatus,paymentPaid,paymentBalance,paymentOrderId,followupReason,...rest}=l;
+      const {rejectedAt,contactDone,svDone,measurement,quotation,paymentMarked,paymentStatus,paymentPaid,paymentBalance,paymentOrderId,followupReason,cpAccepted,cpAcceptedAt,cpAcceptedDate,...rest}=l;
       return {...rest,status:"New",salesman:Number(reassignRejected.salesman),notes:l.notes||"",cpDraftMeasurement,reassignedAt:stamp,assignedAt:stamp,updated:todayStr(),updatedAt:stamp};
     }));
     const lead=reassignRejected.lead;
     if(lead.channelPartnerId&&lead.partnerRequestId){
       setPartners?.(ps=>ps.map(p=>p.id===lead.channelPartnerId?{...p,requests:(p.requests||[]).map(r=>{
         if(r.id!==lead.partnerRequestId)return r;
-        const {quotation,cpAccepted,cpAcceptedDate,...safe}=r;
+        const {quotation,cpAccepted,cpAcceptedAt,cpAcceptedDate,...safe}=r;
         return {...safe,quotationAmount:0,paid:0,balance:0,status:"Reassigned - Salesman Visit Pending",leadStatus:"New",stage:"Salesman Visit Pending",pdfReady:false};
       })}:p));
     }
@@ -3990,8 +3990,9 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
     if(!lead?.channelPartnerId||!lead?.partnerRequestId)return;
     setPartners?.(ps=>ps.map(p=>p.id===lead.channelPartnerId?{...p,requests:(p.requests||[]).map(r=>r.id===lead.partnerRequestId?{...r,...patch}:r)}:p));
   };
-  const canQuoteLead=lead=>!!lead.measurement&&!lead.paymentMarked&&!partnerRequestFor(lead)?.cpAccepted;
-  const canMarkPayment=lead=>!!lead.quotation&&!lead.paymentMarked&&(!lead.channelPartnerId||partnerRequestFor(lead)?.cpAccepted);
+  const isCpQuoteAccepted=lead=>!!lead.channelPartnerId&&(!!lead.cpAccepted||!!partnerRequestFor(lead)?.cpAccepted);
+  const canQuoteLead=lead=>!!lead.measurement&&!lead.paymentMarked&&!isCpQuoteAccepted(lead);
+  const canMarkPayment=lead=>!!salesmanLeadQuote(lead)&&!lead.paymentMarked&&(!lead.channelPartnerId||isCpQuoteAccepted(lead));
   const updateLead=(id,patch)=>setLeads(ls=>ls.map(l=>l.id===id?{...l,...patch,updated:todayStr(),updatedAt:new Date().toISOString()}:l));
   const markContacted=lead=>{ if(lead.contactDone)return; updateLead(lead.id,{contactDone:true,status:"Contacted"}); };
   const markSv=lead=>{ if(lead.svDone)return; updateLead(lead.id,{svDone:true,status:"Site Visit Scheduled"}); };
@@ -4049,7 +4050,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
   const openQuote=lead=>{
     if(!lead.measurement)return alert("Please fill measurement first");
     if(lead.paymentMarked)return alert("Payment is already marked, quotation cannot be revised");
-    if(partnerRequestFor(lead)?.cpAccepted)return alert("Channel partner already accepted this quotation, it cannot be revised");
+    if(isCpQuoteAccepted(lead))return alert("Channel partner already accepted this quotation, it cannot be revised");
     if(lead.channelPartnerId){
       openMeasurement(lead,true);
       return;
@@ -4061,7 +4062,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
   const applyQuoteRateToAll=()=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>({...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:q.lineItems?.[i]?.productType||q.productType||quotedProductType(quoteLead),rate:q.rate}))}));
   const saveQuote=()=>{
     if(!quoteLead)return;
-    if(quoteLead.paymentMarked||partnerRequestFor(quoteLead)?.cpAccepted)return alert("This quotation is locked and cannot be revised");
+    if(quoteLead.paymentMarked||isCpQuoteAccepted(quoteLead))return alert("This quotation is locked and cannot be revised");
     const lineItems=quoteWindows.map((w,i)=>({...(quote.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:quote.lineItems?.[i]?.productType||quote.productType||quotedProductType(quoteLead),rate:Number(quote.lineItems?.[i]?.rate||quote.rate||0)}));
     if(lineItems.some(item=>!Number(item.rate)))return alert("Sq ft rate is required for every window/product line");
     const baseQuote={...quote,lineItems,rate:Number(quote.rate||lineItems[0]?.rate||0),productType:quote.productType||quotedProductType(quoteLead)};
@@ -4074,19 +4075,21 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
   };
   const openPayment=lead=>{
     if(lead.paymentMarked)return;
-    if(!lead.quotation)return alert("Generate quotation first");
-    setPaymentLead(lead);
-    setPaymentForm({status:"Fully Paid",paid:lead.quotation.amount||"",notes:""});
+    const quotation=salesmanLeadQuote(lead);
+    if(!quotation)return alert("Generate quotation first");
+    setPaymentLead({...lead,quotation});
+    setPaymentForm({status:"Fully Paid",paid:quotation.amount||"",notes:""});
   };
   const markPaymentDone=()=>{
     const lead=paymentLead;
     if(!lead)return;
     if(lead.paymentMarked)return;
-    const quotedAmount=Number(lead.quotation?.amount||0);
+    const quotation=salesmanLeadQuote(lead)||lead.quotation||{};
+    const quotedAmount=Number(quotation.amount||0);
     const paidAmount=paymentForm.status==="Fully Paid"?quotedAmount:(paymentForm.status==="No Paid"?0:Number(paymentForm.paid||0));
     if(paidAmount>quotedAmount)return alert("Paid amount cannot be more than quotation amount");
     const balance=Math.max(quotedAmount-paidAmount,0);
-    updateLead(lead.id,{paymentMarked:true,paymentStatus:paymentForm.status,paymentPaid:paidAmount,paymentBalance:balance,status:"Converted"});
+    updateLead(lead.id,{quotation,paymentMarked:true,paymentStatus:paymentForm.status,paymentPaid:paidAmount,paymentBalance:balance,status:"Converted"});
     syncPartnerRequest(lead,{paid:paidAmount,balance,status:paidAmount>0?"Payment Updated":"Quotation Sent",stage:paidAmount>0?"Payment Done - Awaiting Management Order":"Payment Pending"});
     setPaymentLead(null);
     setPaymentForm({status:"Partially Paid",paid:"",notes:""});
@@ -4095,7 +4098,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
     ["Contacted",lead.contactDone||["Contacted","Site Visit Scheduled","Quoted","Converted"].includes(lead.status)],
     ["SV Done",lead.svDone||["Site Visit Scheduled","Quoted","Converted"].includes(lead.status)],
     ["Measurement",!!lead.measurement],
-    ["Quotation",!!lead.quotation],
+    ["Quotation",!!salesmanLeadQuote(lead)],
     ["Payment",!!lead.paymentMarked],
   ];
 
@@ -4135,8 +4138,8 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
               <b style={{color:T.text}}>Measurement:</b> {lead.measurement.type} | {measurementWindows(lead).length} window(s) | {leadAreaSqft(lead)} sq ft
               <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>{measurementWindows(lead).map((w,i)=><span key={i} style={{border:`1px solid ${T.border}`,borderRadius:6,padding:"4px 8px",background:"#fff"}}>{w.label}: {measurementDisplay(w)} | {w.sqft} SQFT | {w.color}</span>)}</div>
             </div>}
-            {lead.quotation&&<div style={{marginTop:10,fontSize:12,color:T.sub}}>Quotation: <b style={{color:T.green}}>{inr(lead.quotation.amount)}</b> | {lead.quotation.productType||quotedProductType(lead)} | {lead.quotation.lineItems?.length>1?"multiple rates":`rate ${inr(lead.quotation.rate)}/sq ft`} | GST {lead.quotation.gst||0}%</div>}
-            {lead.quotation&&lead.paymentMarked&&<div style={{marginTop:8,fontSize:12,color:T.sub}}>Payment: <b style={{color:salesmanLeadPaid(lead)>0?T.green:T.red}}>{paymentStatusFromAmounts(salesmanLeadPaid(lead),salesmanLeadQuote(lead)?.amount||0)} | Collected {inr(salesmanLeadPaid(lead))}</b> | <b style={{color:salesmanLeadBalance(lead)>0?T.red:T.green}}>Left {inr(salesmanLeadBalance(lead))}</b></div>}
+            {salesmanLeadQuote(lead)&&<div style={{marginTop:10,fontSize:12,color:T.sub}}>Quotation: <b style={{color:T.green}}>{inr(salesmanLeadQuote(lead).amount)}</b> | {salesmanLeadQuote(lead).productType||quotedProductType(lead)} | {salesmanLeadQuote(lead).lineItems?.length>1?"multiple rates":`rate ${inr(salesmanLeadQuote(lead).rate)}/sq ft`} | GST {salesmanLeadQuote(lead).gst||0}%</div>}
+            {salesmanLeadQuote(lead)&&lead.paymentMarked&&<div style={{marginTop:8,fontSize:12,color:T.sub}}>Payment: <b style={{color:salesmanLeadPaid(lead)>0?T.green:T.red}}>{paymentStatusFromAmounts(salesmanLeadPaid(lead),salesmanLeadQuote(lead)?.amount||0)} | Collected {inr(salesmanLeadPaid(lead))}</b> | <b style={{color:salesmanLeadBalance(lead)>0?T.red:T.green}}>Left {inr(salesmanLeadBalance(lead))}</b></div>}
             <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
               {!lead.contactDone&&<PrimaryBtn small onClick={()=>markContacted(lead)}>Mark Contacted</PrimaryBtn>}
               {!lead.svDone&&<PrimaryBtn small color={T.orange} onClick={()=>markSv(lead)}>Mark SV Done</PrimaryBtn>}
@@ -4144,7 +4147,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
               {lead.channelPartnerId&&lead.measurement&&canQuoteLead(lead)&&<GhostBtn small onClick={()=>openMeasurement(lead,false)}>Edit CP Form</GhostBtn>}
               {canQuoteLead(lead)&&<PrimaryBtn small color={T.purple} onClick={()=>openQuote(lead)}>{lead.quotation?"Revise Quotation":"Generate Quotation"}</PrimaryBtn>}
               {canMarkPayment(lead)&&<SuccessBtn small onClick={()=>openPayment(lead)}>Mark Payment Done</SuccessBtn>}
-              {lead.quotation&&<GhostBtn small onClick={()=>openQuotationPdf(lead,lead.quotation)}>Download PDF</GhostBtn>}
+              {salesmanLeadQuote(lead)&&<GhostBtn small onClick={()=>openQuotationPdf({...lead,quotation:salesmanLeadQuote(lead)},salesmanLeadQuote(lead))}>Download PDF</GhostBtn>}
             </div>
             </>; })()}
           </GlassCard>
@@ -4496,10 +4499,21 @@ function ChannelPartnerPortal({ partners, setPartners, leads, setLeads, orders, 
   };
   const acceptQuotedOrder=req=>{
     if(!req.quotationAmount)return alert("Quotation is not generated yet");
+    const acceptedAt=new Date().toISOString();
     setPartners(ps=>ps.map(p=>{
       if(p.id!==partner.id)return p;
-      return {...p,requests:(p.requests||[]).map(r=>r.id===req.id?{...r,cpAccepted:true,cpAcceptedDate:todayStr(),status:"Order Accepted By CP",stage:"Awaiting Payment From Salesman"}:r)};
+      return {...p,requests:(p.requests||[]).map(r=>r.id===req.id?{...r,cpAccepted:true,cpAcceptedAt:acceptedAt,cpAcceptedDate:todayStr(),status:"Order Accepted By CP",leadStatus:"CP Approved",stage:"Awaiting Payment From Salesman"}:r)};
     }));
+    setLeads?.(ls=>ls.map(l=>l.partnerRequestId===req.id?{
+      ...l,
+      quotation:l.quotation||req.quotation,
+      cpAccepted:true,
+      cpAcceptedAt:acceptedAt,
+      cpAcceptedDate:todayStr(),
+      status:"Quoted",
+      updated:todayStr(),
+      updatedAt:acceptedAt
+    }:l));
   };
   const trackStatus=req=>{
     if(req.status==="Order Pending")return "Order Pending";
