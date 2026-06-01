@@ -305,6 +305,10 @@ const T = {
 };
 
 const SMART_COVERING_LOGO = "/quotation-logo.png";
+const logoAssetUrl = () => {
+  if(typeof window==="undefined")return "quotation-logo.png";
+  return new URL("quotation-logo.png", window.location.href).href;
+};
 
 const BRAND = {
   name: "Smart Covering",
@@ -314,7 +318,7 @@ const BRAND = {
 };
 const QUOTATION_COMPANY = {
   gst: "GSTIN: 29AFJFS3796R1ZN",
-  logo: "quotation-logo.png?v=20260522-194245",
+  logo: "quotation-logo.png",
   address: "6, Laggere Main Rd, near Laggere Bridge, Freedom Fighters Colony, Basaweshwara Nagar, Bengaluru, Karnataka - 560058",
   phone: "+91 9972135955, +91 7878735297",
   email: "info@smartcovering.in",
@@ -445,7 +449,7 @@ const openQuotationPdf = (lead, quote) => {
   const area=leadChargeableSqft(lead);
   const {lines,gross,discountPct,discount,taxable,gstPct,gstAmount,total}=quoteTotals(lead,quote);
   const company=QUOTATION_COMPANY;
-  const quotationLogoUrl=new URL(company.logo, window.location.href).href;
+  const quotationLogoUrl=logoAssetUrl();
   const win=window.open("","_blank");
   if(!win)return alert("Please allow popups to generate quotation PDF");
   win.document.write(`<!doctype html><html><head><title>Quotation ${lead.id}</title><style>
@@ -459,7 +463,7 @@ const openQuotationPdf = (lead, quote) => {
   </style></head><body>
     <div class="page">
     <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
-    <div class="head"><div class="brand"><div class="logoBox"><img class="logo" src="${quotationLogoUrl}" onerror="this.src='${BRAND.logo}'" /></div><div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
+    <div class="head"><div class="brand"><div class="logoBox"><img class="logo" src="${quotationLogoUrl}" onerror="this.replaceWith(document.createTextNode('Smart Covering'))" /></div><div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
     <div class="box"><b>Customer Details</b><br/>${lead.name}<br/>${lead.mobile}<br/>${lead.email||""}<br/>${lead.location||""}</div>
     <table><thead><tr><th>#</th><th>Product</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
       ${lines.map((line,i)=>`<tr><td>${i+1}</td><td>${line.productType||productType}</td><td>${line.label||`Window ${i+1}`}<br/><span class="muted">Actual: ${lineAreaSqft(line)} SQFT</span></td><td>${line.color||"-"}</td><td>${line.material||"-"}</td><td>${lineChargeableSqft(line)}</td><td>${inr(Number(line.rate||0))}</td><td>${gstPct}%</td><td>${inr(line.amount||0)}</td></tr>`).join("")}
@@ -475,7 +479,7 @@ const openQuotationPdf = (lead, quote) => {
 const openCpRequestPdf = (partner, req) => {
   const win=window.open("","_blank");
   if(!win)return alert("Please allow popups to view the channel partner request PDF");
-  const logoUrl=new URL(BRAND.logo, window.location.href).href;
+  const logoUrl=logoAssetUrl();
   const windows=(req.windows||req.measurement?.windows||[]).map((raw,i)=>enrichMeasurementLine({...raw,label:raw.label||`Window ${i+1}`}));
   const totalSqft=windows.reduce((sum,w)=>sum+Number(w.chargeableSqft||w.sqft||0),0);
   win.document.write(`<!doctype html><html><head><title>CP Request ${req.id}</title><style>
@@ -534,7 +538,7 @@ const billTaxDetails = (order, bill={}) => {
 
 const openBillPdf = (order, bill={}) => {
   const company=QUOTATION_COMPANY;
-  const logoUrl=new URL(company.logo, window.location.href).href;
+  const logoUrl=logoAssetUrl();
   const totals=billTaxDetails(order,bill);
   const invoiceNo=bill.invoiceNo||`SC/${new Date().getFullYear()}/${String(Date.now()).slice(-5)}`;
   const invoiceDate=bill.date||todayStr();
@@ -3987,7 +3991,7 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
     setPartners?.(ps=>ps.map(p=>p.id===lead.channelPartnerId?{...p,requests:(p.requests||[]).map(r=>r.id===lead.partnerRequestId?{...r,...patch}:r)}:p));
   };
   const canQuoteLead=lead=>!!lead.measurement&&!lead.paymentMarked&&!partnerRequestFor(lead)?.cpAccepted;
-  const canMarkPayment=lead=>!!lead.quotation&&!lead.paymentMarked&&!lead.channelPartnerId;
+  const canMarkPayment=lead=>!!lead.quotation&&!lead.paymentMarked&&(!lead.channelPartnerId||partnerRequestFor(lead)?.cpAccepted);
   const updateLead=(id,patch)=>setLeads(ls=>ls.map(l=>l.id===id?{...l,...patch,updated:todayStr(),updatedAt:new Date().toISOString()}:l));
   const markContacted=lead=>{ if(lead.contactDone)return; updateLead(lead.id,{contactDone:true,status:"Contacted"}); };
   const markSv=lead=>{ if(lead.svDone)return; updateLead(lead.id,{svDone:true,status:"Site Visit Scheduled"}); };
