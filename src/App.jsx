@@ -501,7 +501,7 @@ const openQuotationPdf = async (lead, quote) => {
     .summary{margin-left:auto;width:320px}.summary div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb}.total{font-size:20px;font-weight:700;color:#16a34a;text-align:right;margin-top:12px}.small{font-size:11px;color:#6b7280}@media print{button{display:none}body{background:#fff}.page{border:0}}
   </style></head><body>
     <div class="page">
-    <button onclick="window.print()" style="float:right;padding:9px 14px;background:#f59e0b;color:#111827;border:1px solid #f59e0b;border-radius:6px;font-weight:700">Download / Save as PDF</button>
+    <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
     <div class="head"><div class="brand">${quotationLogo}<div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
     <div class="box"><b>Customer Details</b><br/>${lead.name}<br/>${lead.mobile}<br/>${lead.email||""}<br/>${lead.location||""}</div>
     <table><thead><tr><th>#</th><th>Product</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
@@ -530,7 +530,7 @@ const openCpRequestPdf = (partner, req) => {
     table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#f3f4f6}
     .footer{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;color:#374151}@media print{button{display:none}body{padding:18px}}
   </style></head><body>
-    <button onclick="window.print()" style="float:right;margin-bottom:12px;padding:8px 14px;border:1px solid #f59e0b;border-radius:8px;background:#f59e0b;color:#111827;font-weight:700">Print / Save PDF</button>
+    <button onclick="window.print()" style="float:right;margin-bottom:12px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:700">Print / Save PDF</button>
     <div class="head"><div class="brand"><img class="logo" src="${logoUrl}" /><div><h1>${BRAND.name}</h1><div class="muted">${BRAND.appName}<br/>${BRAND.website}</div></div></div><div><b>CHANNEL PARTNER ORDER REQUEST</b><br/><span class="muted">Request ID: ${req.id||"-"}<br/>Date: ${req.date||todayStr()}<br/>Status: ${req.status||req.approval||"Pending"}</span></div></div>
     <div class="grid">
       <div class="box"><div class="title">Channel Partner</div><b>${partner?.name||"-"}</b><br/>Owner: ${partner?.owner||"-"}<br/>Mobile: ${partner?.mobile||"-"}<br/>City: ${partner?.city||"-"}</div>
@@ -590,7 +590,7 @@ const openBillPdf = (order, bill={}) => {
   win.document.write(`<!doctype html><html><head><title>Invoice ${invoiceNo}</title><style>
     body{font-family:Arial,sans-serif;color:#111827;margin:0;padding:28px;background:#f8fafc}.page{max-width:960px;margin:auto;background:#fff;border:1px solid #e5e7eb;padding:28px}.head{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid #1a3c5e;padding-bottom:16px;margin-bottom:18px}.brand{display:flex;gap:14px;align-items:flex-start}.logo{width:132px;height:132px;object-fit:contain}.muted{color:#6b7280;font-size:12px;line-height:1.5}h1{margin:0;color:#1a3c5e}.box{border:1px solid #d1d5db;border-radius:8px;padding:12px;margin:12px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#eff6ff;color:#1a3c5e}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e5e7eb}.total{font-size:19px;font-weight:700;color:#16a34a}.small{font-size:11px;color:#6b7280;line-height:1.5}@media print{button{display:none}body{background:#fff}.page{border:0}}
   </style></head><body><div class="page">
-    <button onclick="window.print()" style="float:right;padding:9px 14px;background:#f59e0b;color:#111827;border:1px solid #f59e0b;border-radius:6px;font-weight:700">Download / Save as PDF</button>
+    <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
     <div class="head"><div class="brand"><img class="logo" src="${logoUrl}" onerror="this.src='${BRAND.logo}'" /><div><h1>${BRAND.name}</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>TAX INVOICE</b><br/><span class="muted">Invoice No: ${invoiceNo}<br/>Date: ${invoiceDate}<br/>Order: ${order.id}</span></div></div>
     <div class="grid"><div class="box"><b>Billed To</b><br/>${order.customer||""}<br/>${order.mobile||""}<br/>${customerAddress}<br/>GSTIN: ${customerGstin||"-"}</div><div class="box"><b>Supply Details</b><br/>Place of Supply: ${place}<br/>Reverse Charge: No<br/>Payment: Paid ${inr(totals.paid)} | Balance ${inr(totals.balance)}</div></div>
     <table><thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th>Size</th><th>Qty</th><th>Rate</th><th>Taxable Value</th></tr></thead><tbody>
@@ -682,15 +682,11 @@ const priorityMeta = { Hot:{color:"#f87171"}, Warm:{color:"#f59e0b"}, Cold:{colo
 
 const StatusPill = ({ s }) => { const m=statusMeta[s]||{color:"#64748b",label:s}; return <Pill label={m.label} color={m.color} />; };
 
-const ACTION_BUTTON_BG = `linear-gradient(135deg,${T.amber},${T.amberL})`;
-const ACTION_BUTTON_COLOR = "#111827";
-const ACTION_BUTTON_BORDER = `1px solid ${T.amber}`;
-
 const PrimaryBtn = ({ children, onClick, color=T.amber, small=false, disabled=false }) => (
   <button onClick={disabled?undefined:onClick} disabled={disabled} style={{
-    background:ACTION_BUTTON_BG,
-    color:ACTION_BUTTON_COLOR,
-    border:ACTION_BUTTON_BORDER, cursor:disabled?"not-allowed":"pointer",
+    background:`linear-gradient(135deg,${color},${color}cc)`,
+    color:color==="#f59e0b"?"#0f172a":"#fff",
+    border:"none", cursor:disabled?"not-allowed":"pointer",
     opacity:disabled ? .65 : 1,
     borderRadius:10, fontWeight:600, fontFamily:"inherit",
     fontSize:small?12:13, padding:small?"6px 14px":"9px 20px",
@@ -716,23 +712,23 @@ const ButtonSpinner = ({ color="currentColor" }) => (
 
 const GhostBtn = ({ children, onClick, small=false }) => (
   <button onClick={onClick} style={{
-    background:"#fff7ed",
-    color:ACTION_BUTTON_COLOR,
-    border:`1px solid ${T.amberL}`,
+    background:"transparent",
+    color:T.sub,
+    border:`1px solid ${T.border}`,
     cursor:"pointer", borderRadius:10, fontWeight:500, fontFamily:"inherit",
     fontSize:small?12:13, padding:small?"6px 14px":"9px 20px",
     transition:"all .15s",
     whiteSpace:"nowrap",
   }}
-  onMouseEnter={e=>{e.currentTarget.style.background="#ffedd5";e.currentTarget.style.color=ACTION_BUTTON_COLOR}}
-  onMouseLeave={e=>{e.currentTarget.style.background="#fff7ed";e.currentTarget.style.color=ACTION_BUTTON_COLOR}}
+  onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.color=T.text}}
+  onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.sub}}
   >{children}</button>
 );
 
 const DangerBtn = ({ children, onClick, small=false }) => (
   <button onClick={onClick} style={{
-    background:ACTION_BUTTON_BG, color:ACTION_BUTTON_COLOR,
-    border:ACTION_BUTTON_BORDER, cursor:"pointer",
+    background:`${T.red}22`, color:T.red,
+    border:`1px solid ${T.red}44`, cursor:"pointer",
     borderRadius:10, fontWeight:500, fontFamily:"inherit",
     fontSize:small?12:13, padding:small?"6px 14px":"9px 20px",
     whiteSpace:"nowrap",
@@ -741,8 +737,8 @@ const DangerBtn = ({ children, onClick, small=false }) => (
 
 const SuccessBtn = ({ children, onClick, small=false, disabled=false }) => (
   <button onClick={disabled?undefined:onClick} disabled={disabled} style={{
-    background:ACTION_BUTTON_BG, color:ACTION_BUTTON_COLOR,
-    border:ACTION_BUTTON_BORDER, cursor:disabled?"not-allowed":"pointer",
+    background:`${T.green}22`, color:T.green,
+    border:`1px solid ${T.green}44`, cursor:disabled?"not-allowed":"pointer",
     opacity:disabled ? .65 : 1,
     borderRadius:10, fontWeight:500, fontFamily:"inherit",
     fontSize:small?12:13, padding:small?"6px 14px":"9px 20px",
@@ -1413,8 +1409,8 @@ function Leads({ leads, setLeads, orders, setOrders, payments, setPayments, foll
               <TD nowrap>
                 <div style={{display:"flex",gap:6}}>
                   {!isManager&&<><EditBtn onClick={()=>openLeadEdit(l)} />
-                  {!l.paymentOrderId&&!orders.some(o=>o.leadId===l.id)&&<button onClick={()=>rejectLead(l)} style={{background:ACTION_BUTTON_BG,border:ACTION_BUTTON_BORDER,borderRadius:7,padding:"4px 8px",color:ACTION_BUTTON_COLOR,cursor:"pointer",fontSize:11,fontWeight:700}} title="Reject Lead">Rejected</button>}
-                  {quotation&&l.paymentMarked&&!l.paymentOrderId&&<button onClick={()=>openOrderApproval(l)} style={{background:ACTION_BUTTON_BG,border:ACTION_BUTTON_BORDER,borderRadius:7,padding:"4px 8px",color:ACTION_BUTTON_COLOR,cursor:"pointer",fontSize:11,fontWeight:700}} title="Send to Production">Order</button>}</>}
+                  {!l.paymentOrderId&&!orders.some(o=>o.leadId===l.id)&&<button onClick={()=>rejectLead(l)} style={{background:`${T.red}18`,border:`1px solid ${T.red}33`,borderRadius:7,padding:"4px 8px",color:T.red,cursor:"pointer",fontSize:11,fontWeight:700}} title="Reject Lead">Rejected</button>}
+                  {quotation&&l.paymentMarked&&!l.paymentOrderId&&<button onClick={()=>openOrderApproval(l)} style={{background:`${T.purple}22`,border:`1px solid ${T.purple}33`,borderRadius:7,padding:"4px 8px",color:T.purple,cursor:"pointer",fontSize:11}} title="Send to Production">Order</button>}</>}
                 </div>
               </TD>
             </TR>
@@ -1745,8 +1741,8 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
                   </select>
                   {!workOrders.find(w=>w.orderId===o.id)&&<PrimaryBtn small onClick={()=>makeWO(o)} color={T.teal}>+ Work Order</PrimaryBtn>}
                 </>}
-                <button onClick={()=>alert(` Invoice for ${o.id}\n\nIn production: PDF generated with:\n Company letterhead & GSTIN\n Order details & line items\n Payment terms & balance due\n Digital signature field\n\nPowered by jsPDF + backend service`)} style={{padding:"6px 12px",background:ACTION_BUTTON_BG,border:ACTION_BUTTON_BORDER,borderRadius:9,color:ACTION_BUTTON_COLOR,cursor:"pointer",fontSize:12,fontWeight:700}}> Invoice PDF</button>
-                <button onClick={()=>alert(` Quotation for ${o.id}\n\nIn production: formal quotation PDF with validity, terms and conditions`)} style={{padding:"6px 12px",background:ACTION_BUTTON_BG,border:ACTION_BUTTON_BORDER,borderRadius:9,color:ACTION_BUTTON_COLOR,cursor:"pointer",fontSize:12,fontWeight:700}}> Quotation</button>
+                <button onClick={()=>alert(` Invoice for ${o.id}\n\nIn production: PDF generated with:\n Company letterhead & GSTIN\n Order details & line items\n Payment terms & balance due\n Digital signature field\n\nPowered by jsPDF + backend service`)} style={{padding:"6px 12px",background:`${T.green}15`,border:`1px solid ${T.green}30`,borderRadius:9,color:T.green,cursor:"pointer",fontSize:12}}> Invoice PDF</button>
+                <button onClick={()=>alert(` Quotation for ${o.id}\n\nIn production: formal quotation PDF with validity, terms and conditions`)} style={{padding:"6px 12px",background:`${T.blue}15`,border:`1px solid ${T.blue}30`,borderRadius:9,color:T.blue,cursor:"pointer",fontSize:12}}> Quotation</button>
               </div>
             </GlassCard>
           );
@@ -1806,7 +1802,7 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
               <input type="number" placeholder="Unit Price " value={p.unitPrice} onChange={e=>{ const up=Number(e.target.value);setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,unitPrice:up,total:up*pp.qty}:pp)})); }} />
             </div>
           ))}
-          <button onClick={()=>setForm(f=>({...f,products:[...f.products,{name:PRODUCTS[0],size:"",qty:1,unitPrice:0,total:0}]}))} style={{background:"#fff7ed",border:`1px solid ${T.amberL}`,borderRadius:8,color:ACTION_BUTTON_COLOR,cursor:"pointer",fontSize:12,padding:"6px 10px",fontFamily:"inherit",fontWeight:700}}>+ Add Product Line</button>
+          <button onClick={()=>setForm(f=>({...f,products:[...f.products,{name:PRODUCTS[0],size:"",qty:1,unitPrice:0,total:0}]}))} style={{background:"none",border:"none",color:T.teal,cursor:"pointer",fontSize:12,padding:"4px 0",fontFamily:"inherit"}}>+ Add Product Line</button>
           <FormRow cols={3} ><Field label="Discount ()"><input type="number" value={form.discount} onChange={e=>setForm(f=>({...f,discount:Number(e.target.value)}))} /></Field><Field label="Advance Paid ()"><input type="number" value={form.advance} onChange={e=>setForm(f=>({...f,advance:Number(e.target.value)}))} /></Field><Field label="Status"><select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>{["Pending","In Production"].map(s=><option key={s}>{s}</option>)}</select></Field></FormRow>
           <div style={{background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.2)",borderRadius:10,padding:"10px 14px",fontSize:12,color:T.sub}}>
             Subtotal: {inr(form.products.reduce((s,p)=>s+p.total,0))} | After Discount: {inr(form.products.reduce((s,p)=>s+p.total,0)-form.discount)} | Balance: {inr(form.products.reduce((s,p)=>s+p.total,0)-form.discount-form.advance)}
@@ -2309,14 +2305,14 @@ function ProductionBoard({ orders, setOrders, partners, setPartners, smartInvent
       <div style={{display:"flex",gap:10,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",marginBottom:18}}>
         <div style={{display:"inline-flex",gap:4,padding:4,border:`1px solid ${T.border}`,borderRadius:8,background:T.card}}>
           {[["ongoing","Ongoing"],["completed","Completed"],["installationCompleted","Installation Completed"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setBucket(id)} style={{border:`1px solid ${T.amber}`,borderRadius:6,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",background:bucket===id?ACTION_BUTTON_BG:"#fff7ed",color:ACTION_BUTTON_COLOR}}>
+            <button key={id} onClick={()=>setBucket(id)} style={{border:0,borderRadius:6,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",background:bucket===id?T.green:"transparent",color:bucket===id?"#fff":T.sub}}>
               {label}
             </button>
           ))}
         </div>
         <div style={{display:"inline-flex",gap:4,padding:4,border:`1px solid ${T.border}`,borderRadius:8,background:T.card}}>
           {[["mesh","Mesh"],["blind","Blind"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setView(id)} style={{border:`1px solid ${T.amber}`,borderRadius:6,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",background:view===id?ACTION_BUTTON_BG:"#fff7ed",color:ACTION_BUTTON_COLOR}}>
+            <button key={id} onClick={()=>setView(id)} style={{border:0,borderRadius:6,padding:"9px 16px",fontSize:12,fontWeight:700,cursor:"pointer",background:view===id?T.blue:"transparent",color:view===id?"#fff":T.sub}}>
               {label}
             </button>
           ))}
@@ -2614,7 +2610,7 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
       <GlassCard style={{marginBottom:18}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <div><div style={{fontWeight:800,color:T.text}}>Invoice control</div><div style={{fontSize:12,color:T.muted,marginTop:3}}>Generate GST bill PDFs, or mark selected work as cash/no-bill for internal tracking.</div></div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["billable","Pending"],["billed","Billed"],["cash","Cash / No Bill"],["all","All"]].map(([id,label])=><button key={id} onClick={()=>setFilter(id)} style={{border:`1px solid ${T.amber}`,background:filter===id?ACTION_BUTTON_BG:"#fff7ed",color:ACTION_BUTTON_COLOR,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["billable","Pending"],["billed","Billed"],["cash","Cash / No Bill"],["all","All"]].map(([id,label])=><button key={id} onClick={()=>setFilter(id)} style={{border:`1px solid ${filter===id?T.blue:T.border}`,background:filter===id?T.blue:T.cardHi,color:filter===id?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div>
         </div>
       </GlassCard>
       <GlassCard style={{marginBottom:18}}>
@@ -2623,7 +2619,7 @@ function BillingSession({ orders, setOrders, payments=[], setPayments, bills, se
           <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
             <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
             <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
-            <PrimaryBtn onClick={exportBillingCsv}>Export CSV</PrimaryBtn>
+          <PrimaryBtn onClick={exportBillingCsv} color={T.blue}>Export CSV</PrimaryBtn>
           </div>
         </div>
       </GlassCard>
@@ -2782,7 +2778,7 @@ function PurchaseSession({ purchases, setPurchases, expenses=[], setExpenses }) 
     <GlassCard style={{marginBottom:18}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
         <div><div style={{fontWeight:800,color:T.text}}>Purchase control</div><div style={{fontSize:12,color:T.muted,marginTop:3}}>Record raw material purchases with GST. Saved purchases also appear automatically in Expenses.</div></div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["all","All"],["pending","Pending"],["paid","Paid"],["Raw Material","Raw Material"]].map(([id,label])=><button key={id} onClick={()=>setFilter(id)} style={{border:`1px solid ${T.amber}`,background:filter===id?ACTION_BUTTON_BG:"#fff7ed",color:ACTION_BUTTON_COLOR,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["all","All"],["pending","Pending"],["paid","Paid"],["Raw Material","Raw Material"]].map(([id,label])=><button key={id} onClick={()=>setFilter(id)} style={{border:`1px solid ${filter===id?T.blue:T.border}`,background:filter===id?T.blue:T.cardHi,color:filter===id?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div>
       </div>
     </GlassCard>
     <GlassCard style={{marginBottom:18}}>
@@ -2791,7 +2787,7 @@ function PurchaseSession({ purchases, setPurchases, expenses=[], setExpenses }) 
         <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
           <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
           <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
-          <PrimaryBtn onClick={exportPurchasesCsv}>Export CSV</PrimaryBtn>
+          <PrimaryBtn onClick={exportPurchasesCsv} color={T.green}>Export CSV</PrimaryBtn>
         </div>
       </div>
     </GlassCard>
@@ -2879,7 +2875,7 @@ function DailyExpenses({ expenses, setExpenses }) {
         <div style={{display:"flex",gap:10,alignItems:"end",flexWrap:"wrap"}}>
           <Field label="From"><input type="date" value={exportFrom} onChange={e=>setExportFrom(e.target.value)} /></Field>
           <Field label="To"><input type="date" value={exportTo} onChange={e=>setExportTo(e.target.value)} /></Field>
-          <PrimaryBtn onClick={exportExpensesCsv}>Export CSV</PrimaryBtn>
+          <PrimaryBtn onClick={exportExpensesCsv} color={T.green}>Export CSV</PrimaryBtn>
         </div>
       </div>
     </GlassCard>
@@ -2960,8 +2956,8 @@ function Inventory({ inventory, setInventory, isManager }) {
                     <TD color={T.amber}>{item.price}/{item.unit}</TD>
                     <TD nowrap>
                       {!isManager&&<div style={{display:"flex",gap:6}}>
-                        <button onClick={()=>{setShowIn(item);setAdjQty(0)}} style={{padding:"4px 10px",background:ACTION_BUTTON_BG,border:ACTION_BUTTON_BORDER,borderRadius:7,color:ACTION_BUTTON_COLOR,cursor:"pointer",fontSize:11,fontWeight:700}}>+ IN</button>
-                        <button onClick={()=>{setShowOut(item);setAdjQty(0)}} style={{padding:"4px 10px",background:ACTION_BUTTON_BG,border:ACTION_BUTTON_BORDER,borderRadius:7,color:ACTION_BUTTON_COLOR,cursor:"pointer",fontSize:11,fontWeight:700}}> OUT</button>
+                        <button onClick={()=>{setShowIn(item);setAdjQty(0)}} style={{padding:"4px 10px",background:"rgba(34,197,94,.12)",border:"1px solid rgba(34,197,94,.2)",borderRadius:7,color:T.green,cursor:"pointer",fontSize:11}}>+ IN</button>
+                        <button onClick={()=>{setShowOut(item);setAdjQty(0)}} style={{padding:"4px 10px",background:"rgba(251,146,60,.12)",border:"1px solid rgba(251,146,60,.2)",borderRadius:7,color:T.orange,cursor:"pointer",fontSize:11}}> OUT</button>
                       </div>}
                     </TD>
                   </TR>
@@ -3104,9 +3100,9 @@ function InventoryDashboard({ smartInventory, setSmartInventory }) {
     <SectionTitle action={<PrimaryBtn small color={view==="mesh"?T.teal:T.purple} onClick={()=>openAddInventory(view)}>{view==="mesh"?"+ Add Mesh Inventory":"+ Add Blinds Inventory"}</PrimaryBtn>}>Inventory</SectionTitle>
     <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:14,marginBottom:16,boxShadow:"0 8px 20px rgba(15,23,42,.04)",display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",flexWrap:"wrap"}}>
       <div><div style={{fontSize:17,fontWeight:800,color:T.text,fontFamily:"'Space Grotesk',sans-serif"}}>{view==="blinds"?"Blinds Inventory":"Mesh Inventory"}</div><div style={{fontSize:12,color:T.muted,marginTop:4}}>Smart stock, cut pieces, reserved quantity and consumption history.</div></div>
-    <div style={{display:"inline-flex",gap:4,padding:4,border:`1px solid ${T.border}`,borderRadius:8,background:T.card}}>{[["blinds","Blinds Inventory"],["mesh","Mesh Inventory"]].map(([id,label])=><button key={id} onClick={()=>setView(id)} style={{border:`1px solid ${T.amber}`,borderRadius:6,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",background:view===id?ACTION_BUTTON_BG:"#fff7ed",color:ACTION_BUTTON_COLOR}}>{label}</button>)}</div>
+    <div style={{display:"inline-flex",gap:4,padding:4,border:`1px solid ${T.border}`,borderRadius:8,background:T.card}}>{[["blinds","Blinds Inventory"],["mesh","Mesh Inventory"]].map(([id,label])=><button key={id} onClick={()=>setView(id)} style={{border:0,borderRadius:6,padding:"9px 14px",fontSize:12,fontWeight:700,cursor:"pointer",background:view===id?T.blue:"transparent",color:view===id?"#fff":T.sub}}>{label}</button>)}</div>
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(220px,1fr))",gap:12,marginBottom:16}}>{sectionOptions.map(opt=><button key={opt.section} onClick={()=>setSectionModal({...opt,kind:view})} style={{border:`1px solid ${T.amber}`,background:"#fff7ed",borderRadius:8,padding:"16px 18px",textAlign:"left",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.04)"}}><div style={{fontSize:16,fontWeight:900,color:ACTION_BUTTON_COLOR,fontFamily:"'Space Grotesk',sans-serif"}}>{opt.label}</div><div style={{fontSize:12,color:T.sub,marginTop:4}}>Open inventory list</div></button>)}</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(220px,1fr))",gap:12,marginBottom:16}}>{sectionOptions.map(opt=><button key={opt.section} onClick={()=>setSectionModal({...opt,kind:view})} style={{border:`1px solid ${opt.color}33`,background:`${opt.color}12`,borderRadius:8,padding:"16px 18px",textAlign:"left",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.04)"}}><div style={{fontSize:16,fontWeight:900,color:opt.color,fontFamily:"'Space Grotesk',sans-serif"}}>{opt.label}</div><div style={{fontSize:12,color:T.sub,marginTop:4}}>Open inventory list</div></button>)}</div>
     <div style={{background:"#fff",border:`1px dashed ${T.border}`,borderRadius:8,padding:22,textAlign:"center",color:T.muted,fontSize:13}}>Select a section above to open its inventory records in a popup window.</div>
     <div style={{marginTop:16,background:"#fff",border:`1px solid ${T.border}`,borderRadius:8,padding:14}}>
       <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:10}}>Recent Inventory Activity</div>
@@ -4722,9 +4718,9 @@ function LoginScreen({ onLogin }) {
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:20,position:"relative"}}>
       <div style={{position:"absolute",top:18,right:20,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
-        <button onClick={()=>openLogin("salesman")} style={{border:ACTION_BUTTON_BORDER,background:"#fff7ed",color:ACTION_BUTTON_COLOR,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Salesman Login</button>
-        <button onClick={()=>openLogin("partner")} style={{border:ACTION_BUTTON_BORDER,background:"#fff7ed",color:ACTION_BUTTON_COLOR,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Channel Partner</button>
-        <button onClick={()=>openLogin("production")} style={{border:ACTION_BUTTON_BORDER,background:"#fff7ed",color:ACTION_BUTTON_COLOR,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Production Login</button>
+        <button onClick={()=>openLogin("salesman")} style={{border:`1px solid ${T.border}`,background:T.card,color:T.text,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Salesman Login</button>
+        <button onClick={()=>openLogin("partner")} style={{border:`1px solid ${T.blue}33`,background:`${T.blue}12`,color:T.blue,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Channel Partner</button>
+        <button onClick={()=>openLogin("production")} style={{border:`1px solid ${T.green}33`,background:`${T.green}12`,color:T.green,borderRadius:8,padding:"9px 13px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 18px rgba(15,23,42,.05)"}}>Production Login</button>
       </div>
       <div style={{width:"100%",maxWidth:390}}>
         {/* Logo */}
