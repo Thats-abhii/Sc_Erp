@@ -554,6 +554,7 @@ const css = `
   input::placeholder { color:${T.muted}; }
   select option { background:#ffffff; color:${T.text}; }
   label { font-size:12px; font-weight:600; color:${T.sub}; letter-spacing:.2px; text-transform:none; display:block; margin-bottom:6px; }
+  @keyframes smartcoveringSpin { to { transform: rotate(360deg); } }
 `;
 
 const GlassCard = ({ children, style={}, onClick, hover=false }) => (
@@ -617,10 +618,22 @@ const PrimaryBtn = ({ children, onClick, color=T.amber, small=false, disabled=fa
     fontSize:small?12:13, padding:small?"6px 14px":"9px 20px",
     transition:"opacity .15s,transform .1s",
     whiteSpace:"nowrap",
+    display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8,
   }}
-  onMouseEnter={e=>e.currentTarget.style.opacity=".88"}
-  onMouseLeave={e=>e.currentTarget.style.opacity="1"}
+  onMouseEnter={e=>{ if(!disabled)e.currentTarget.style.opacity=".88"; }}
+  onMouseLeave={e=>{ if(!disabled)e.currentTarget.style.opacity="1"; }}
   >{children}</button>
+);
+
+const ButtonSpinner = ({ color="currentColor" }) => (
+  <span style={{
+    width:16,height:16,borderRadius:"50%",
+    border:`2px solid ${color==="currentColor"?"rgba(255,255,255,.45)":color}`,
+    borderTopColor:color,
+    display:"inline-block",
+    animation:"smartcoveringSpin .75s linear infinite",
+    flexShrink:0
+  }} />
 );
 
 const GhostBtn = ({ children, onClick, small=false }) => (
@@ -3170,8 +3183,9 @@ function Salesmen({ leads, setLeads, followups, setFollowups, orders, payments, 
     } catch (error) {
       return alert(error.message||"Could not update salesman password");
     }
-    setSalesmen(list=>list.map(s=>s.id===salesman.id?{...s,password:""}:s));
-    if(sel?.id===salesman.id)setSel(s=>({...s,password:""}));
+    const forcedLogoutAt=Date.now();
+    setSalesmen(list=>list.map(s=>s.id===salesman.id?{...s,password:"",forcedLogoutAt}:s));
+    if(sel?.id===salesman.id)setSel(s=>({...s,password:"",forcedLogoutAt}));
     alert("Password changed. Any logged-in session for this salesman will be logged out and old password will not work.");
   };
   const calcSalesmanMetrics=s=>{
@@ -3442,8 +3456,9 @@ function ChannelPartners({ partners, setPartners, leads=[], orders=[], setLeads,
     } catch (error) {
       return alert(error.message||"Could not update channel partner password");
     }
-    setPartners(ps=>ps.map(p=>p.id===partner.id?{...p,password:""}:p));
-    if(selected?.id===partner.id)setSelected(p=>({...p,password:""}));
+    const forcedLogoutAt=Date.now();
+    setPartners(ps=>ps.map(p=>p.id===partner.id?{...p,password:"",forcedLogoutAt}:p));
+    if(selected?.id===partner.id)setSelected(p=>({...p,password:"",forcedLogoutAt}));
     alert("Password changed. Any logged-in session for this channel partner will be logged out and old password will not work.");
   };
   const openAcceptRequest=(partner,req)=>{
@@ -4457,6 +4472,7 @@ function LoginScreen({ onLogin }) {
   const [partnerError,setPartnerError]=useState("");
   const [managementError,setManagementError]=useState("");
   const [productionError,setProductionError]=useState("");
+  const [loggingIn,setLoggingIn]=useState("");
   const loginPath=window.location.pathname.toLowerCase();
   const loginPortal=window.SMART_COVERING_LOGIN_PORTAL||
     (loginPath.includes("salesman")
@@ -4471,9 +4487,11 @@ function LoginScreen({ onLogin }) {
     if(user?.linkedEntityId===null||user?.linkedEntityId===undefined||user?.linkedEntityId==="")return null;
     return /^\d+$/.test(String(user.linkedEntityId))?Number(user.linkedEntityId):user.linkedEntityId;
   };
-  const submitBackendLogin=async (e, form, backendRole, appRole, setError) => {
+  const submitBackendLogin=async (e, form, backendRole, appRole, setError, loadingKey) => {
     e.preventDefault();
+    if(loggingIn)return;
     setError("");
+    setLoggingIn(loadingKey);
     try {
       const data=await loginToBackend({loginId:form.loginId,password:form.password,role:backendRole});
       rememberAuthToken(data.token);
@@ -4481,12 +4499,18 @@ function LoginScreen({ onLogin }) {
       onLogin(appRole,entityIdFromUser(data.user),"");
     } catch (error) {
       setError(error.message||"Invalid login ID or password");
+      setLoggingIn("");
     }
   };
-  const submitManagement=e=>submitBackendLogin(e,managementLogin,"management","management",setManagementError);
-  const submitSalesman=e=>submitBackendLogin(e,salesLogin,"salesman","salesman",setSalesError);
-  const submitPartner=e=>submitBackendLogin(e,partnerLogin,"channel_partner","channelPartner",setPartnerError);
-  const submitProduction=e=>submitBackendLogin(e,productionLogin,"production","productionTeam",setProductionError);
+  const LoginButton=({ color, loadingKey, children })=>(
+    <PrimaryBtn color={color} disabled={loggingIn===loadingKey}>
+      {loggingIn===loadingKey ? <><ButtonSpinner /> Checking...</> : children}
+    </PrimaryBtn>
+  );
+  const submitManagement=e=>submitBackendLogin(e,managementLogin,"management","management",setManagementError,"management");
+  const submitSalesman=e=>submitBackendLogin(e,salesLogin,"salesman","salesman",setSalesError,"salesman");
+  const submitPartner=e=>submitBackendLogin(e,partnerLogin,"channel_partner","channelPartner",setPartnerError,"partner");
+  const submitProduction=e=>submitBackendLogin(e,productionLogin,"production","productionTeam",setProductionError,"production");
   const openLogin=type=>{
     setLoginModal(type);
     setSalesError("");
@@ -4522,7 +4546,7 @@ function LoginScreen({ onLogin }) {
             <input value={portal.form.loginId} onChange={e=>portal.setForm(f=>({...f,loginId:e.target.value}))} placeholder={portal.idPlaceholder} autoComplete="username" />
             <input type="password" value={portal.form.password} onChange={e=>portal.setForm(f=>({...f,password:e.target.value}))} placeholder="Password" autoComplete="current-password" />
             {portal.error&&<div style={{fontSize:12,color:T.red}}>{portal.error}</div>}
-            <PrimaryBtn color={portal.color}>{portal.button}</PrimaryBtn>
+            <LoginButton color={portal.color} loadingKey={loginPortal==="channelPartner"?"partner":loginPortal}>{portal.button}</LoginButton>
           </div>
         </form>
       </div>
@@ -4571,7 +4595,7 @@ function LoginScreen({ onLogin }) {
           <input value={managementLogin.loginId} onChange={e=>setManagementLogin(f=>({...f,loginId:e.target.value}))} placeholder="Management Login ID" autoComplete="username" />
           <input type="password" value={managementLogin.password} onChange={e=>setManagementLogin(f=>({...f,password:e.target.value}))} placeholder="Password" autoComplete="current-password" />
           {managementError&&<div style={{fontSize:12,color:T.red}}>{managementError}</div>}
-          <PrimaryBtn color={T.blue}>Login as Management</PrimaryBtn>
+          <LoginButton color={T.blue} loadingKey="management">Login as Management</LoginButton>
           </form>
         </div>
 
@@ -4592,7 +4616,7 @@ function LoginScreen({ onLogin }) {
             <input value={popup.form.loginId} onChange={e=>popup.setForm(f=>({...f,loginId:e.target.value}))} placeholder={popup.idPlaceholder} autoComplete="username" />
             <input type="password" value={popup.form.password} onChange={e=>popup.setForm(f=>({...f,password:e.target.value}))} placeholder="Password" autoComplete="current-password" />
             {popup.error&&<div style={{fontSize:12,color:T.red}}>{popup.error}</div>}
-            <PrimaryBtn color={popup.color}>{popup.button}</PrimaryBtn>
+            <LoginButton color={popup.color} loadingKey={loginModal==="partner"?"partner":loginModal}>{popup.button}</LoginButton>
           </div>
         </form>
       </div>}
@@ -4854,10 +4878,11 @@ export default function App() {
   const [activeSalesmanId,setActiveSalesmanId]=useState(null);
   const [activePartnerId,setActivePartnerId]=useState(null);
   const [authPassword,setAuthPassword]=useState("");
+  const [sessionLoginAt,setSessionLoginAt]=useState(0);
   const sharedStateReadyRef=useRef(false);
   const sharedStateSaveTimerRef=useRef(null);
   const sessionExpiredNoticeRef=useRef(false);
-  const forceLogoutForExpiredSession=()=>{
+  const forceLogoutForExpiredSession=(message="Your login session has expired because the password was changed. Please login again with the new password.")=>{
     if(sessionExpiredNoticeRef.current)return;
     sessionExpiredNoticeRef.current=true;
     clearAuthToken();
@@ -4865,10 +4890,12 @@ export default function App() {
     setActiveSalesmanId(null);
     setActivePartnerId(null);
     setAuthPassword("");
+    setSessionLoginAt(0);
     setMod("dashboard");
-    alert("Your login session has expired because the password was changed. Please login again with the new password.");
+    alert(message);
     setTimeout(()=>{ sessionExpiredNoticeRef.current=false; },1000);
   };
+  const isForcedLogoutRecord=(record)=>Number(record?.forcedLogoutAt||0)>Number(sessionLoginAt||0);
   const withoutPassword=row=>{
     const {password, ...safe}=row||{};
     return safe;
@@ -4941,6 +4968,35 @@ export default function App() {
     return ()=>clearInterval(timer);
   },[role]);
   useEffect(()=>{
+    if(role==="salesman"&&activeSalesmanId&&sessionLoginAt){
+      const current=salesmen.find(s=>s.id===activeSalesmanId);
+      if(isForcedLogoutRecord(current))forceLogoutForExpiredSession();
+    }
+    if(role==="channelPartner"&&activePartnerId&&sessionLoginAt){
+      const current=channelPartners.find(p=>p.id===activePartnerId);
+      if(isForcedLogoutRecord(current))forceLogoutForExpiredSession();
+    }
+  },[salesmen,channelPartners,role,activeSalesmanId,activePartnerId,sessionLoginAt]);
+  useEffect(()=>{
+    if(!["salesman","channelPartner"].includes(role)||!sessionLoginAt)return;
+    const checkForcedLogout=()=>{
+      fetchSharedAppState().then(data=>{
+        const state=data?.state||{};
+        if(role==="salesman"){
+          const current=(state.salesmen||[]).find(s=>s.id===activeSalesmanId);
+          if(isForcedLogoutRecord(current))forceLogoutForExpiredSession();
+        }
+        if(role==="channelPartner"){
+          const current=(state.channelPartners||[]).find(p=>p.id===activePartnerId);
+          if(isForcedLogoutRecord(current))forceLogoutForExpiredSession();
+        }
+      }).catch(error=>{ if(isAuthExpiredError(error))forceLogoutForExpiredSession(); });
+    };
+    const timer=setInterval(checkForcedLogout,5000);
+    checkForcedLogout();
+    return ()=>clearInterval(timer);
+  },[role,activeSalesmanId,activePartnerId,sessionLoginAt]);
+  useEffect(()=>{
     const timer=setInterval(()=>setHeaderClock(formatHeaderClock()),1000);
     return ()=>clearInterval(timer);
   },[]);
@@ -4981,6 +5037,7 @@ export default function App() {
       setActiveSalesmanId(null);
       setActivePartnerId(null);
       setAuthPassword("");
+      setSessionLoginAt(0);
       setMod("dashboard");
       alert("Password changed successfully. Please login again with the new password.");
     } catch (error) {
@@ -5010,7 +5067,7 @@ export default function App() {
   const visibleFollowups=isSalesman?followups.filter(f=>visibleLeadIds.has(f.leadId)):followups;
   const alertCount=unifiedFollowups(activeWorkflowLeads,visibleFollowups,salesmen).filter(f=>(f.nextDate||todayStr())<todayStr()).length;
 
-  if(!role)return <><style>{css}</style><LoginScreen onLogin={(nextRole,entityId=null,password="")=>{setRole(nextRole);setActiveSalesmanId(nextRole==="salesman"?entityId:null);setActivePartnerId(nextRole==="channelPartner"?entityId:null);setAuthPassword(password);setMod(nextRole==="productionTeam"?"production":"dashboard")}} /></>;
+  if(!role)return <><style>{css}</style><LoginScreen onLogin={(nextRole,entityId=null,password="")=>{setSessionLoginAt(Date.now());setRole(nextRole);setActiveSalesmanId(nextRole==="salesman"?entityId:null);setActivePartnerId(nextRole==="channelPartner"?entityId:null);setAuthPassword(password);setMod(nextRole==="productionTeam"?"production":"dashboard")}} /></>;
 
   const GUARD = fn => isManager ? (()=>{}) : fn;
   const visibleNav=isProductionTeam?NAV.filter(item=>item.id==="production"):(isPartner?NAV.filter(item=>item.id==="dashboard"):(isSalesman?NAV.filter(item=>!["channelPartners","inventoryDashboard","production","billing","purchase","dailyExpenses","salesmen","reports"].includes(item.id)):NAV));
@@ -5129,7 +5186,7 @@ export default function App() {
                     <div style={{fontSize:12,fontWeight:500,color:T.text}}>{isProductionTeam?"Production Team":(isPartner?(activePartner?.name||"Channel Partner"):(isSalesman?(activeSalesman?.name||"Salesman"):"Management"))}</div>
                   </div>}
                   {isManager&&<button onClick={changeOwnPassword} style={{padding:"6px 12px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",transition:"all .15s"}}>Change Password</button>}
-                  <button onClick={()=>{logoutFromBackend();setRole(null);setActiveSalesmanId(null);setActivePartnerId(null);setAuthPassword("");setMod("dashboard")}} style={{padding:"6px 14px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",transition:"all .15s"}}
+                  <button onClick={()=>{logoutFromBackend();setRole(null);setActiveSalesmanId(null);setActivePartnerId(null);setAuthPassword("");setSessionLoginAt(0);setMod("dashboard")}} style={{padding:"6px 14px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit",transition:"all .15s"}}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.05)";e.currentTarget.style.color=T.text}}
                   onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.muted}}
                   >Logout</button>
