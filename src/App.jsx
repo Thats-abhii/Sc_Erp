@@ -309,6 +309,23 @@ const logoAssetUrl = () => {
   if(typeof window==="undefined")return "quotation-logo.png";
   return new URL("quotation-logo.png", window.location.href).href;
 };
+const logoFallbackUrls = () => {
+  if(typeof window==="undefined")return ["quotation-logo.png","/quotation-logo.png","public/quotation-logo.png"];
+  const origin=window.location.origin&&window.location.origin!=="null" ? window.location.origin : "";
+  return [
+    logoAssetUrl(),
+    origin ? `${origin}/quotation-logo.png` : "",
+    new URL("/quotation-logo.png", window.location.href).href,
+    new URL("public/quotation-logo.png", window.location.href).href,
+    "quotation-logo.png",
+    "/quotation-logo.png"
+  ].filter(Boolean);
+};
+const logoImgHtml = (className="logo") => {
+  const urls=logoFallbackUrls();
+  const fallbacks=urls.slice(1).map(u=>`'${u}'`).join(",");
+  return `<img class="${className}" src="${urls[0]}" onerror="const next=[${fallbacks}]; const cur=this.getAttribute('data-logo-try')||0; if(Number(cur)<next.length){this.setAttribute('data-logo-try',Number(cur)+1); this.src=next[Number(cur)];} else {this.replaceWith(document.createTextNode('Smart Covering'));}" />`;
+};
 
 const BRAND = {
   name: "Smart Covering",
@@ -449,7 +466,7 @@ const openQuotationPdf = (lead, quote) => {
   const area=leadChargeableSqft(lead);
   const {lines,gross,discountPct,discount,taxable,gstPct,gstAmount,total}=quoteTotals(lead,quote);
   const company=QUOTATION_COMPANY;
-  const quotationLogoUrl=logoAssetUrl();
+  const quotationLogo=logoImgHtml("logo");
   const win=window.open("","_blank");
   if(!win)return alert("Please allow popups to generate quotation PDF");
   win.document.write(`<!doctype html><html><head><title>Quotation ${lead.id}</title><style>
@@ -463,7 +480,7 @@ const openQuotationPdf = (lead, quote) => {
   </style></head><body>
     <div class="page">
     <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
-    <div class="head"><div class="brand"><img class="logo" src="${quotationLogoUrl}" onerror="this.replaceWith(document.createTextNode('Smart Covering'))" /><div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
+    <div class="head"><div class="brand">${quotationLogo}<div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
     <div class="box"><b>Customer Details</b><br/>${lead.name}<br/>${lead.mobile}<br/>${lead.email||""}<br/>${lead.location||""}</div>
     <table><thead><tr><th>#</th><th>Product</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
       ${lines.map((line,i)=>`<tr><td>${i+1}</td><td>${line.productType||productType}</td><td>${line.label||`Window ${i+1}`}<br/><span class="muted">Actual: ${lineAreaSqft(line)} SQFT</span></td><td>${line.color||"-"}</td><td>${line.material||"-"}</td><td>${lineChargeableSqft(line)}</td><td>${inr(Number(line.rate||0))}</td><td>${gstPct}%</td><td>${inr(line.amount||0)}</td></tr>`).join("")}
