@@ -469,11 +469,9 @@ const quoteLineItems = (lead, quote={}) => measurementWindows(lead).map((raw,i)=
   const line=enrichMeasurementLine(raw);
   const rate=quoteLineRate(quote,line,i);
   const productType=quote?.lineItems?.[i]?.productType || quote?.productType || quotedProductType(lead);
-  const hsn=firstPresent(quote?.lineItems?.[i]?.hsn,quote?.hsn,line?.hsn);
   return {
     ...line,
     productType,
-    hsn,
     rate,
     amount:Math.round(lineChargeableSqft(line)*rate)
   };
@@ -492,12 +490,19 @@ const quoteTotals = (lead, quote={}) => {
 const finishPrintablePopup = win => {
   if(!win)return;
   setTimeout(()=>{
-    try { win.focus(); win.print(); } catch {}
+    try {
+      const printNow=()=>{ win.focus(); setTimeout(()=>win.print(),50); };
+      win.document.querySelectorAll("[data-print-pdf]").forEach(btn=>{
+        btn.addEventListener("click", e=>{
+          e.preventDefault();
+          printNow();
+        });
+      });
+    } catch {}
   },500);
 };
 
 const openQuotationPdf = async (lead, quote) => {
-  if(quoteLineItems(lead,quote).some(line=>!hasHsn(line.hsn)))return alert(HSN_REQUIRED_MESSAGE);
   const win=window.open("","_blank");
   if(!win)return alert("Please allow popups to generate quotation PDF");
   win.document.write(`<!doctype html><html><body style="font-family:Arial,sans-serif;padding:24px">Preparing quotation...</body></html>`);
@@ -519,11 +524,11 @@ const openQuotationPdf = async (lead, quote) => {
     .summary{margin-left:auto;width:320px}.summary div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb}.total{font-size:20px;font-weight:700;color:#16a34a;text-align:right;margin-top:12px}.small{font-size:11px;color:#6b7280}@media print{button{display:none}body{background:#fff}.page{border:0}}
   </style></head><body>
     <div class="page">
-    <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
+    <button type="button" data-print-pdf="1" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px;cursor:pointer">Download / Save as PDF</button>
     <div class="head"><div class="brand">${quotationLogo}<div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
     <div class="box"><b>Customer Details</b><br/>${lead.name}<br/>${lead.mobile}<br/>${lead.email||""}<br/>${lead.location||""}</div>
-    <table><thead><tr><th>#</th><th>Product</th><th>HSN/SAC</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
-      ${lines.map((line,i)=>`<tr><td>${i+1}</td><td>${line.productType||productType}</td><td>${line.hsn||"-"}</td><td>${line.label||`Window ${i+1}`}<br/><span class="muted">Actual: ${lineAreaSqft(line)} SQFT</span></td><td>${line.color||"-"}</td><td>${line.material||"-"}</td><td>${lineChargeableSqft(line)}</td><td>${inr(Number(line.rate||0))}</td><td>${gstPct}%</td><td>${inr(line.amount||0)}</td></tr>`).join("")}
+    <table><thead><tr><th>#</th><th>Product</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
+      ${lines.map((line,i)=>`<tr><td>${i+1}</td><td>${line.productType||productType}</td><td>${line.label||`Window ${i+1}`}<br/><span class="muted">Actual: ${lineAreaSqft(line)} SQFT</span></td><td>${line.color||"-"}</td><td>${line.material||"-"}</td><td>${lineChargeableSqft(line)}</td><td>${inr(Number(line.rate||0))}</td><td>${gstPct}%</td><td>${inr(line.amount||0)}</td></tr>`).join("")}
     </tbody></table>
     <div class="summary"><div><span>Actual Sq Ft</span><b>${actualArea}</b></div><div><span>Chargeable Sq Ft</span><b>${area}</b></div><div><span>Gross Amount</span><b>${inr(gross)}</b></div><div><span>Discount (${discountPct}%)</span><b>${inr(discount)}</b></div><div><span>Taxable Amount</span><b>${inr(taxable)}</b></div><div><span>GST (${gstPct}%)</span><b>${inr(gstAmount)}</b></div><div class="total"><span>Grand Total</span><span>${inr(total)}</span></div></div>
     <div class="box"><b>Notes</b><br/>${quote.notes||"Rates include standard material and fitting. Taxes and special hardware as applicable."}</div>
@@ -549,7 +554,7 @@ const openCpRequestPdf = (partner, req) => {
     table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#f3f4f6}
     .footer{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;color:#374151}@media print{button{display:none}body{padding:18px}}
   </style></head><body>
-    <button onclick="window.print()" style="float:right;margin-bottom:12px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:700">Print / Save PDF</button>
+    <button type="button" data-print-pdf="1" style="float:right;margin-bottom:12px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:700;cursor:pointer">Print / Save PDF</button>
     <div class="head"><div class="brand"><img class="logo" src="${logoUrl}" /><div><h1>${BRAND.name}</h1><div class="muted">${BRAND.appName}<br/>${BRAND.website}</div></div></div><div><b>CHANNEL PARTNER ORDER REQUEST</b><br/><span class="muted">Request ID: ${req.id||"-"}<br/>Date: ${req.date||todayStr()}<br/>Status: ${req.status||req.approval||"Pending"}</span></div></div>
     <div class="grid">
       <div class="box"><div class="title">Channel Partner</div><b>${partner?.name||"-"}</b><br/>Owner: ${partner?.owner||"-"}<br/>Mobile: ${partner?.mobile||"-"}<br/>City: ${partner?.city||"-"}</div>
@@ -611,7 +616,7 @@ const openBillPdf = (order, bill={}) => {
   win.document.write(`<!doctype html><html><head><title>Invoice ${invoiceNo}</title><style>
     body{font-family:Arial,sans-serif;color:#111827;margin:0;padding:28px;background:#f8fafc}.page{max-width:960px;margin:auto;background:#fff;border:1px solid #e5e7eb;padding:28px}.head{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid #1a3c5e;padding-bottom:16px;margin-bottom:18px}.brand{display:flex;gap:14px;align-items:flex-start}.logo{width:132px;height:132px;object-fit:contain}.muted{color:#6b7280;font-size:12px;line-height:1.5}h1{margin:0;color:#1a3c5e}.box{border:1px solid #d1d5db;border-radius:8px;padding:12px;margin:12px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#eff6ff;color:#1a3c5e}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e5e7eb}.total{font-size:19px;font-weight:700;color:#16a34a}.small{font-size:11px;color:#6b7280;line-height:1.5}@media print{button{display:none}body{background:#fff}.page{border:0}}
   </style></head><body><div class="page">
-    <button onclick="window.print()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px">Download / Save as PDF</button>
+    <button type="button" data-print-pdf="1" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px;cursor:pointer">Download / Save as PDF</button>
     <div class="head"><div class="brand"><img class="logo" src="${logoUrl}" onerror="this.src='${BRAND.logo}'" /><div><h1>${BRAND.name}</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>TAX INVOICE</b><br/><span class="muted">Invoice No: ${invoiceNo}<br/>Date: ${invoiceDate}<br/>Order: ${order.id}</span></div></div>
     <div class="grid"><div class="box"><b>Billed To</b><br/>${order.customer||""}<br/>${order.mobile||""}<br/>${customerAddress}<br/>GSTIN: ${customerGstin||"-"}</div><div class="box"><b>Supply Details</b><br/>Place of Supply: ${place}<br/>Reverse Charge: No<br/>Payment: Paid ${inr(totals.paid)} | Balance ${inr(totals.balance)}</div></div>
     <table><thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th>Size</th><th>Qty</th><th>Rate</th><th>Taxable Value</th></tr></thead><tbody>
@@ -1333,7 +1338,7 @@ function Leads({ leads, setLeads, orders, setOrders, payments, setPayments, foll
     if(measurementError)return alert(measurementError);
     setConverting(true);
     const quoteLines=quoteLineItems(lead,{...quotation,productType:productionProduct});
-    const orderPayload={id:nid,leadId:lead.id,customer:lead.name,mobile:lead.mobile,products:orderMeasurements.map((raw,i)=>{ const w=enrichMeasurementLine(raw); const qLine=quoteLines[i]||{}; return {name:qLine.productType||productionProduct,type:lead.measurement?.type||"Blind",sourceLeadProduct:lead.product,hsn:firstPresent(qLine.hsn,quotation.hsn),size:`Actual ${w.sqft} SQFT / Billing ${w.chargeableSqft} SQFT`,qty:Number(w.qty||1),unitPrice:Number(qLine.rate||quotation.rate||0),total:Number(qLine.amount ?? (w.chargeableSqft*Number(quotation.rate||0))),window:w.label||`Window ${i+1}`,height:w.height,width:w.width,heightUnit:w.heightUnit,widthUnit:w.widthUnit,heightFt:w.heightFt,widthFt:w.widthFt,sqft:w.sqft,actualSqft:w.sqft,chargeableSqft:w.chargeableSqft,billingSqft:w.chargeableSqft,color:w.color,material:w.material,code:w.code}; }),discount:Number(quotation.discount||0),discountType:"percent",gst:Number(quotation.gst||0),gstAmount:Number(quotation.gstAmount||0),taxable:Number(quotation.taxable||0),final:amount,advance:paid,balance,delivery:"",install:true,installer:"",status:"Approval Pending",approval:"Pending",created:todayStr(),createdAt:new Date().toISOString()};
+    const orderPayload={id:nid,leadId:lead.id,customer:lead.name,mobile:lead.mobile,products:orderMeasurements.map((raw,i)=>{ const w=enrichMeasurementLine(raw); const qLine=quoteLines[i]||{}; return {name:qLine.productType||productionProduct,type:lead.measurement?.type||"Blind",sourceLeadProduct:lead.product,size:`Actual ${w.sqft} SQFT / Billing ${w.chargeableSqft} SQFT`,qty:Number(w.qty||1),unitPrice:Number(qLine.rate||quotation.rate||0),total:Number(qLine.amount ?? (w.chargeableSqft*Number(quotation.rate||0))),window:w.label||`Window ${i+1}`,height:w.height,width:w.width,heightUnit:w.heightUnit,widthUnit:w.widthUnit,heightFt:w.heightFt,widthFt:w.widthFt,sqft:w.sqft,actualSqft:w.sqft,chargeableSqft:w.chargeableSqft,billingSqft:w.chargeableSqft,color:w.color,material:w.material,code:w.code}; }),discount:Number(quotation.discount||0),discountType:"percent",gst:Number(quotation.gst||0),gstAmount:Number(quotation.gstAmount||0),taxable:Number(quotation.taxable||0),final:amount,advance:paid,balance,delivery:"",install:true,installer:"",status:"Approval Pending",approval:"Pending",created:todayStr(),createdAt:new Date().toISOString()};
     setOrders(os=>{
       if(os.some(o=>o.leadId===lead.id||o.id===nid||(normalizeMobile(o.mobile)===normalizeMobile(lead.mobile)&&o.status==="Approval Pending"))){
         duplicateAudit("Lead Management Order",`Duplicate production order blocked for lead ${lead.id}`,{leadId:lead.id,mobile:lead.mobile});
@@ -1686,7 +1691,7 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
   const [showDetail,setShowDetail]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
   const [saving,setSaving]=useState(false);
-  const blank={customer:"",mobile:"",products:[{name:PRODUCTS[0],hsn:"",size:"",qty:1,unitPrice:0,total:0}],discount:0,final:0,advance:0,balance:0,delivery:"",install:false,installer:"",status:"Pending",leadId:""};
+  const blank={customer:"",mobile:"",products:[{name:PRODUCTS[0],size:"",qty:1,unitPrice:0,total:0}],discount:0,final:0,advance:0,balance:0,delivery:"",install:false,installer:"",status:"Pending",leadId:""};
   const [form,setForm]=useState(blank);
 
   const filtered=orders.filter(o=>fSt==="All"||o.status===fSt);
@@ -1696,7 +1701,6 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
   const save=()=>{
     if(saving)return;
     if(!form.customer)return alert("Customer name required");
-    if(form.products.some(p=>!hasHsn(p.hsn)))return alert(HSN_REQUIRED_MESSAGE);
     const mobileError=validateMobile(form.mobile);
     if(mobileError)return alert(mobileError);
     const normalizedMobile=normalizeMobile(form.mobile);
@@ -1819,15 +1823,14 @@ function Orders({ orders, setOrders, workOrders, setWorkOrders, payments, isMana
           </FormRow>
           <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:10}}>Products</div>
           {form.products.map((p,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr",gap:10,marginBottom:8}}>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr",gap:10,marginBottom:8}}>
               <select value={p.name} onChange={e=>setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,name:e.target.value}:pp)}))}>{PRODUCTS.map(pr=><option key={pr}>{pr}</option>)}</select>
-              <input placeholder="HSN/SAC *" value={p.hsn||""} onChange={e=>setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,hsn:e.target.value}:pp)}))} style={!hasHsn(p.hsn)?{borderColor:T.red}:null} />
               <input placeholder="Size" value={p.size} onChange={e=>setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,size:e.target.value}:pp)}))} />
               <input type="number" placeholder="Qty" value={p.qty} onChange={e=>{ const q=Number(e.target.value);setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,qty:q,total:q*pp.unitPrice}:pp)})); }} />
               <input type="number" placeholder="Unit Price " value={p.unitPrice} onChange={e=>{ const up=Number(e.target.value);setForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,unitPrice:up,total:up*pp.qty}:pp)})); }} />
             </div>
           ))}
-          <button onClick={()=>setForm(f=>({...f,products:[...f.products,{name:PRODUCTS[0],hsn:"",size:"",qty:1,unitPrice:0,total:0}]}))} style={{background:"none",border:"none",color:T.teal,cursor:"pointer",fontSize:12,padding:"4px 0",fontFamily:"inherit"}}>+ Add Product Line</button>
+          <button onClick={()=>setForm(f=>({...f,products:[...f.products,{name:PRODUCTS[0],size:"",qty:1,unitPrice:0,total:0}]}))} style={{background:"none",border:"none",color:T.teal,cursor:"pointer",fontSize:12,padding:"4px 0",fontFamily:"inherit"}}>+ Add Product Line</button>
           <FormRow cols={3} ><Field label="Discount ()"><input type="number" value={form.discount} onChange={e=>setForm(f=>({...f,discount:Number(e.target.value)}))} /></Field><Field label="Advance Paid ()"><input type="number" value={form.advance} onChange={e=>setForm(f=>({...f,advance:Number(e.target.value)}))} /></Field><Field label="Status"><select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>{["Pending","In Production"].map(s=><option key={s}>{s}</option>)}</select></Field></FormRow>
           <div style={{background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.2)",borderRadius:10,padding:"10px 14px",fontSize:12,color:T.sub}}>
             Subtotal: {inr(form.products.reduce((s,p)=>s+p.total,0))} | After Discount: {inr(form.products.reduce((s,p)=>s+p.total,0)-form.discount)} | Balance: {inr(form.products.reduce((s,p)=>s+p.total,0)-form.discount-form.advance)}
@@ -3105,7 +3108,7 @@ function InventoryDashboard({ smartInventory, setSmartInventory }) {
   const [openLengths,setOpenLengths]=useState(null);
   const [inventoryModal,setInventoryModal]=useState(null);
   const [sectionModal,setSectionModal]=useState(null);
-  const blankInv={kind:"blinds",section:"rolls",name:"",item:"",detail:"",shade:"",code:"",hsn:"",rolls:"",metres:"",qty:"",unit:"pcs",full:"",fullLengthFt:12,cut:"",lengthsText:""};
+  const blankInv={kind:"blinds",section:"rolls",name:"",item:"",detail:"",shade:"",code:"",rolls:"",metres:"",qty:"",unit:"pcs",full:"",fullLengthFt:12,cut:"",lengthsText:""};
   const [inventoryForm,setInventoryForm]=useState(blankInv);
   const parseLengths=text=>(text||"").split(",").map(x=>x.trim()).filter(Boolean).map(x=>{ const [size,qty]=x.split(":").map(p=>p?.trim()); return {size:size||"",qty:Number(qty||0)}; }).filter(x=>x.size);
   const lengthsText=lengths=>(lengths||[]).map(l=>`${l.size}:${l.qty}`).join(", ");
@@ -3116,23 +3119,23 @@ function InventoryDashboard({ smartInventory, setSmartInventory }) {
   const audit=(text,kind)=>updateInv(si=>({movements:[{id:Date.now(),text,kind,date:todayStr()},...(si.movements||[])].slice(0,20)}));
   const saveInventory=()=>{
     const f=inventoryForm; const id=inventoryModal?.id||`inv${Date.now()}`; const label=(f.item||f.name).trim();
-    if(!label)return alert("Inventory name is required"); if(!f.code.trim())return alert("Password code is required"); if(!hasHsn(f.hsn))return alert(HSN_REQUIRED_MESSAGE);
+    if(!label)return alert("Inventory name is required"); if(!f.code.trim())return alert("Password code is required");
     setSmartInventory(si=>{
       const next={...si};
       if(f.kind==="blinds"&&f.section==="rolls"){
-        const row={id,name:label,code:f.code.trim(),hsn:String(f.hsn||"").trim(),shade:f.shade.trim(),rolls:Number(f.rolls||0),metres:Number(f.metres||0)};
+        const row={id,name:label,code:f.code.trim(),shade:f.shade.trim(),rolls:Number(f.rolls||0),metres:Number(f.metres||0)};
         next.blindRolls=inventoryModal?.mode==="edit"?si.blindRolls.map(x=>x.id===id?row:x):[...si.blindRolls,row];
       }
       if(f.kind==="blinds"&&f.section==="components"){
-        const row={id,item:label,detail:f.detail.trim(),qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),hsn:String(f.hsn||"").trim(),reserved:Number(f.reserved||0)};
+        const row={id,item:label,detail:f.detail.trim(),qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),reserved:Number(f.reserved||0)};
         next.blindComponents=inventoryModal?.mode==="edit"?si.blindComponents.map(x=>x.id===id?row:x):[...si.blindComponents,row];
       }
       if(f.kind==="mesh"&&f.section==="materials"){
-        const row={id,item:label,code:f.code.trim(),hsn:String(f.hsn||"").trim(),full:Number(f.full||0),fullLengthFt:Number(f.fullLengthFt||12),lengths:parseLengths(f.lengthsText),cut:Number(f.cut||0),unit:f.unit||"lengths",reserved:Number(f.reserved||0)};
+        const row={id,item:label,code:f.code.trim(),full:Number(f.full||0),fullLengthFt:Number(f.fullLengthFt||12),lengths:parseLengths(f.lengthsText),cut:Number(f.cut||0),unit:f.unit||"lengths",reserved:Number(f.reserved||0)};
         next.meshComponents=inventoryModal?.mode==="edit"?si.meshComponents.map(x=>x.id===id?row:x):[...si.meshComponents,row];
       }
       if(f.kind==="mesh"&&f.section==="hardware"){
-        const row={id,item:label,qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),hsn:String(f.hsn||"").trim(),reserved:Number(f.reserved||0)};
+        const row={id,item:label,qty:Number(f.qty||0),unit:f.unit||"pcs",code:f.code.trim(),reserved:Number(f.reserved||0)};
         next.meshHardware=inventoryModal?.mode==="edit"?si.meshHardware.map(x=>x.id===id?row:x):[...si.meshHardware,row];
       }
       next.movements=[{id:Date.now(),text:`${inventoryModal?.mode==="edit"?"Edited":"Added"} ${label}`,kind:f.kind,date:todayStr()},...(si.movements||[])].slice(0,20);
@@ -3185,7 +3188,7 @@ function InventoryDashboard({ smartInventory, setSmartInventory }) {
       {sectionModal.kind==="mesh"&&sectionModal.section==="materials"&&<><Table headers={["Material","Password Code","Full Stock","Cut Pieces","Reserved","Usable","Action"]}>{inv.meshComponents.map(i=><TR key={i.id}><TD bold>{i.item}</TD><TD><Code>{i.code}</Code></TD><TD bold color={T.green}>{i.full} {i.unit}<div style={{fontSize:11,color:T.muted}}>{i.fullLengthFt||12} ft each</div></TD><TD>{i.lengths?.length?<button onClick={()=>setOpenLengths(openLengths===i.item?null:i.item)} style={{border:`1px solid ${T.border}`,borderRadius:6,background:T.cardHi,padding:"6px 10px",fontSize:12,fontWeight:700,color:T.blue,cursor:"pointer"}}>{openLengths===i.item?"Hide":"Check"} pieces</button>:<span style={{color:T.muted}}>No cut pieces</span>}</TD><TD>{i.reserved||0}</TD><TD>{Math.max(Number(i.full||0)-Number(i.reserved||0),0)} {i.unit}{stockBar(Math.max(Number(i.full||0)-Number(i.reserved||0),0),i.full,T.teal)}</TD><TD><RowActions onEdit={()=>openEditInventory("mesh","materials",i)} onRemove={()=>removeInventory("meshComponents",i.id,i.item,"mesh")} /></TD></TR>)}</Table>{openLengths&&<div style={{padding:16,borderTop:`1px solid ${T.border}`}}><div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:10}}>{openLengths} - Cut Piece Inventory</div><div style={{display:"flex",flexWrap:"wrap",gap:8}}>{inv.meshComponents.find(i=>i.item===openLengths)?.lengths.map(l=><span key={l.size} style={{fontSize:12,fontWeight:600,color:T.sub,border:`1px solid ${T.border}`,borderRadius:6,padding:"6px 9px",background:T.cardHi}}>{l.size}: <b style={{color:T.blue}}>{l.qty}</b></span>)}</div></div>}</>}
       {sectionModal.kind==="mesh"&&sectionModal.section==="hardware"&&<Table headers={["Hardware","Total QTY","Reserved","Usable","Unit","Password Code","Action"]}>{inv.meshHardware.map(i=><TR key={i.id}><TD bold>{i.item}</TD><TD bold color={T.blue}>{i.qty}</TD><TD>{i.reserved||0}</TD><TD>{Math.max(Number(i.qty||0)-Number(i.reserved||0),0)}{stockBar(Math.max(Number(i.qty||0)-Number(i.reserved||0),0),i.qty,T.green)}</TD><TD>{i.unit}</TD><TD><Code>{i.code}</Code></TD><TD><RowActions onEdit={()=>openEditInventory("mesh","hardware",i)} onRemove={()=>removeInventory("meshHardware",i.id,i.item,"mesh")} /></TD></TR>)}</Table>}
     </div></Modal>}
-    {inventoryModal&&<Modal title={`${inventoryModal.mode==="edit"?"Edit":"Add"} ${inventoryForm.kind==="mesh"?"Mesh":"Blinds"} Inventory`} onClose={()=>setInventoryModal(null)} wide><div style={{background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14}}><div style={{fontSize:12,fontWeight:800,color:T.muted,marginBottom:8}}>Section</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{(inventoryForm.kind==="mesh"?[["materials","Mesh Material"],["hardware","Mesh Hardware"]]:[["rolls","Blind Fabric Roll"],["components","Blind Component"]]).map(([section,label])=><button key={section} onClick={()=>setInventoryForm(f=>({...f,section}))} style={{border:`1px solid ${inventoryForm.section===section?T.blue:T.border}`,background:inventoryForm.section===section?T.blue:"#fff",color:inventoryForm.section===section?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div></div><div style={{display:"grid",gap:12}}><FormRow cols={3}><Field label="Name"><input value={inventoryForm.name||inventoryForm.item} onChange={e=>setInventoryForm(f=>({...f,name:e.target.value,item:e.target.value}))} /></Field><Field label="Password Code"><input value={inventoryForm.code} onChange={e=>setInventoryForm(f=>({...f,code:e.target.value}))} /></Field><Field label="HSN / SAC *"><input value={inventoryForm.hsn||""} onChange={e=>setInventoryForm(f=>({...f,hsn:e.target.value}))} style={!hasHsn(inventoryForm.hsn)?{borderColor:T.red}:null} /></Field></FormRow>{inventoryForm.kind==="blinds"&&inventoryForm.section==="rolls"&&<><Field label="Shade / Colour"><input value={inventoryForm.shade} onChange={e=>setInventoryForm(f=>({...f,shade:e.target.value}))} /></Field><FormRow cols={2}><Field label="Roll Quantity"><input type="number" value={inventoryForm.rolls} onChange={e=>setInventoryForm(f=>({...f,rolls:e.target.value}))} /></Field><Field label="Metre / Roll"><input type="number" value={inventoryForm.metres} onChange={e=>setInventoryForm(f=>({...f,metres:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="blinds"&&inventoryForm.section==="components"&&<><Field label="Details"><input value={inventoryForm.detail} onChange={e=>setInventoryForm(f=>({...f,detail:e.target.value}))} /></Field><FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="materials"&&<><FormRow cols={4}><Field label="Full Stock"><input type="number" value={inventoryForm.full} onChange={e=>setInventoryForm(f=>({...f,full:e.target.value}))} /></Field><Field label="Full Length Ft"><input type="number" value={inventoryForm.fullLengthFt||12} onChange={e=>setInventoryForm(f=>({...f,fullLengthFt:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field><Field label="Cut Earlier"><input type="number" value={inventoryForm.cut} onChange={e=>setInventoryForm(f=>({...f,cut:e.target.value}))} /></Field></FormRow><Field label="Cut Pieces"><input value={inventoryForm.lengthsText} onChange={e=>setInventoryForm(f=>({...f,lengthsText:e.target.value}))} placeholder="7 ft:14, 6.5 ft:9, 5 ft:7" /></Field></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="hardware"&&<FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow>}</div><div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}}><GhostBtn onClick={()=>setInventoryModal(null)}>Cancel</GhostBtn><PrimaryBtn onClick={saveInventory}>{inventoryModal.mode==="edit"?"Save Changes":"Add Inventory"}</PrimaryBtn></div></Modal>}
+    {inventoryModal&&<Modal title={`${inventoryModal.mode==="edit"?"Edit":"Add"} ${inventoryForm.kind==="mesh"?"Mesh":"Blinds"} Inventory`} onClose={()=>setInventoryModal(null)} wide><div style={{background:"#f8fafc",border:`1px solid ${T.border}`,borderRadius:8,padding:12,marginBottom:14}}><div style={{fontSize:12,fontWeight:800,color:T.muted,marginBottom:8}}>Section</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{(inventoryForm.kind==="mesh"?[["materials","Mesh Material"],["hardware","Mesh Hardware"]]:[["rolls","Blind Fabric Roll"],["components","Blind Component"]]).map(([section,label])=><button key={section} onClick={()=>setInventoryForm(f=>({...f,section}))} style={{border:`1px solid ${inventoryForm.section===section?T.blue:T.border}`,background:inventoryForm.section===section?T.blue:"#fff",color:inventoryForm.section===section?"#fff":T.sub,borderRadius:7,padding:"8px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>{label}</button>)}</div></div><div style={{display:"grid",gap:12}}><FormRow cols={2}><Field label="Name"><input value={inventoryForm.name||inventoryForm.item} onChange={e=>setInventoryForm(f=>({...f,name:e.target.value,item:e.target.value}))} /></Field><Field label="Password Code"><input value={inventoryForm.code} onChange={e=>setInventoryForm(f=>({...f,code:e.target.value}))} /></Field></FormRow>{inventoryForm.kind==="blinds"&&inventoryForm.section==="rolls"&&<><Field label="Shade / Colour"><input value={inventoryForm.shade} onChange={e=>setInventoryForm(f=>({...f,shade:e.target.value}))} /></Field><FormRow cols={2}><Field label="Roll Quantity"><input type="number" value={inventoryForm.rolls} onChange={e=>setInventoryForm(f=>({...f,rolls:e.target.value}))} /></Field><Field label="Metre / Roll"><input type="number" value={inventoryForm.metres} onChange={e=>setInventoryForm(f=>({...f,metres:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="blinds"&&inventoryForm.section==="components"&&<><Field label="Details"><input value={inventoryForm.detail} onChange={e=>setInventoryForm(f=>({...f,detail:e.target.value}))} /></Field><FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="materials"&&<><FormRow cols={4}><Field label="Full Stock"><input type="number" value={inventoryForm.full} onChange={e=>setInventoryForm(f=>({...f,full:e.target.value}))} /></Field><Field label="Full Length Ft"><input type="number" value={inventoryForm.fullLengthFt||12} onChange={e=>setInventoryForm(f=>({...f,fullLengthFt:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field><Field label="Cut Earlier"><input type="number" value={inventoryForm.cut} onChange={e=>setInventoryForm(f=>({...f,cut:e.target.value}))} /></Field></FormRow><Field label="Cut Pieces"><input value={inventoryForm.lengthsText} onChange={e=>setInventoryForm(f=>({...f,lengthsText:e.target.value}))} placeholder="7 ft:14, 6.5 ft:9, 5 ft:7" /></Field></>}{inventoryForm.kind==="mesh"&&inventoryForm.section==="hardware"&&<FormRow cols={2}><Field label="Quantity"><input type="number" value={inventoryForm.qty} onChange={e=>setInventoryForm(f=>({...f,qty:e.target.value}))} /></Field><Field label="Unit"><input value={inventoryForm.unit} onChange={e=>setInventoryForm(f=>({...f,unit:e.target.value}))} /></Field></FormRow>}</div><div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}}><GhostBtn onClick={()=>setInventoryModal(null)}>Cancel</GhostBtn><PrimaryBtn onClick={saveInventory}>{inventoryModal.mode==="edit"?"Save Changes":"Add Inventory"}</PrimaryBtn></div></Modal>}
   </div>;
 }
 function Salesmen({ leads, setLeads, followups, setFollowups, orders, payments, salesmen, setSalesmen }) {
@@ -4099,7 +4102,6 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
       lineItems:windows.map((w,i)=>({
         label:w.label||`Window ${i+1}`,
         productType:existing.lineItems?.[i]?.productType||existing.productType||quotedProductType(lead),
-        hsn:firstPresent(existing.lineItems?.[i]?.hsn,existing.hsn,w.hsn),
         rate:existing.lineItems?.[i]?.rate ?? baseRate
       }))
     });
@@ -4149,13 +4151,12 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
   };
   const quoteWindows=quoteLead?measurementWindows(quoteLead):[];
   const updateQuoteLine=(idx,patch)=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>i===idx?{...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,...patch}:{...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`})}));
-  const applyQuoteRateToAll=()=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>({...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:q.lineItems?.[i]?.productType||q.productType||quotedProductType(quoteLead),hsn:firstPresent(q.lineItems?.[i]?.hsn,w.hsn),rate:q.rate}))}));
+  const applyQuoteRateToAll=()=>setQuote(q=>({...q,lineItems:quoteWindows.map((w,i)=>({...(q.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:q.lineItems?.[i]?.productType||q.productType||quotedProductType(quoteLead),rate:q.rate}))}));
   const saveQuote=()=>{
     if(!quoteLead)return;
     if(quoteLead.paymentMarked||isCpQuoteAccepted(quoteLead))return alert("This quotation is locked and cannot be revised");
-    const lineItems=quoteWindows.map((w,i)=>({...(quote.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:quote.lineItems?.[i]?.productType||quote.productType||quotedProductType(quoteLead),hsn:String(firstPresent(quote.lineItems?.[i]?.hsn,w.hsn)).trim(),rate:Number(quote.lineItems?.[i]?.rate||quote.rate||0)}));
+    const lineItems=quoteWindows.map((w,i)=>({...(quote.lineItems?.[i]||{}),label:w.label||`Window ${i+1}`,productType:quote.lineItems?.[i]?.productType||quote.productType||quotedProductType(quoteLead),rate:Number(quote.lineItems?.[i]?.rate||quote.rate||0)}));
     if(lineItems.some(item=>!Number(item.rate)))return alert("Sq ft rate is required for every window/product line");
-    if(lineItems.some(item=>!hasHsn(item.hsn)))return alert(HSN_REQUIRED_MESSAGE);
     const baseQuote={...quote,lineItems,rate:Number(quote.rate||lineItems[0]?.rate||0),productType:quote.productType||quotedProductType(quoteLead)};
     const totals=quoteTotals(quoteLead,baseQuote);
     const quotation={...baseQuote,lineItems:totals.lines.map((line,i)=>({...lineItems[i],sqft:line.chargeableSqft,amount:line.amount})),discount:totals.discountPct,gst:totals.gstPct,gstAmount:totals.gstAmount,taxable:totals.taxable,amount:Math.round(totals.total),date:todayStr(),locked:true};
@@ -4299,10 +4300,9 @@ function SalesmanDashboard({ leads, setLeads, orders, setOrders, payments, setPa
             const rate=Number(line.rate||quote.rate||0);
             const amount=lineChargeableSqft(w)*rate;
             return <div key={i} style={{border:`1px solid ${T.border}`,borderRadius:8,padding:12,background:T.cardHi}}>
-              <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 120px 120px 130px",gap:10,alignItems:"end"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 120px 130px",gap:10,alignItems:"end"}}>
                 <div style={{fontSize:12,color:T.sub}}><b style={{color:T.text}}>{w.label||`Window ${i+1}`}</b><div style={{marginTop:3}}>{w.material||"-"} | {w.color||"-"} | {lineChargeableSqft(w)} SQFT</div></div>
                 <Field label="Product / Material"><input value={line.productType||quote.productType||quotedProductType(quoteLead)} onChange={e=>updateQuoteLine(i,{productType:e.target.value})} /></Field>
-                <Field label="HSN / SAC *"><input value={line.hsn||""} onChange={e=>updateQuoteLine(i,{hsn:e.target.value})} style={!hasHsn(line.hsn)?{borderColor:T.red}:null} /></Field>
                 <Field label="Rate / SQFT *"><input type="number" value={line.rate ?? quote.rate ?? ""} onChange={e=>updateQuoteLine(i,{rate:e.target.value})} /></Field>
                 <div style={{fontSize:12,color:T.sub,paddingBottom:9}}>Amount: <b style={{color:T.green}}>{inr(amount)}</b></div>
               </div>
