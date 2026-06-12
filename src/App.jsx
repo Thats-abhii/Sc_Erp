@@ -499,6 +499,34 @@ const pdfPrintScript = `<script>
     });
   });
 <\/script>`;
+const wirePdfPrintButton = win => {
+  if(!win)return;
+  const bind = () => {
+    try {
+      const doc=win.document;
+      const printNow = event => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        try { win.focus(); } catch {}
+        win.print();
+        return false;
+      };
+      doc.querySelectorAll("[data-print-pdf]").forEach(btn=>{
+        btn.onclick=printNow;
+        if(!btn.dataset.printBound){
+          btn.addEventListener("click",printNow);
+          btn.dataset.printBound="1";
+        }
+      });
+      doc.body?.addEventListener("click",event=>{
+        if(event.target?.closest?.("[data-print-pdf]"))printNow(event);
+      },{capture:true});
+    } catch {}
+  };
+  bind();
+  setTimeout(bind,250);
+  setTimeout(bind,750);
+};
 
 const openQuotationPdf = async (lead, quote) => {
   const win=window.open("","_blank");
@@ -534,6 +562,7 @@ const openQuotationPdf = async (lead, quote) => {
     </div>
   </body></html>`);
   win.document.close();
+  wirePdfPrintButton(win);
 };
 
 const openCpRequestPdf = (partner, req) => {
@@ -565,6 +594,7 @@ const openCpRequestPdf = (partner, req) => {
     <div class="footer"><span>Checked By Management</span><span>For ${BRAND.name}</span></div>
   </body></html>`);
   win.document.close();
+  wirePdfPrintButton(win);
 };
 
 const billTotals = order => {
@@ -623,6 +653,7 @@ const openBillPdf = (order, bill={}) => {
     <div style="display:flex;justify-content:space-between;margin-top:42px;font-size:12px"><span>Customer Signature</span><b>For ${BRAND.name}</b></div>
   </div></body></html>`);
   win.document.close();
+  wirePdfPrintButton(win);
 };
 
 //  BASE COMPONENTS 
