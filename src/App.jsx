@@ -487,20 +487,18 @@ const quoteTotals = (lead, quote={}) => {
   const total=taxable+gstAmount;
   return {lines,gross,discountPct,discount,taxable,gstPct,gstAmount,total};
 };
-const finishPrintablePopup = win => {
-  if(!win)return;
-  setTimeout(()=>{
-    try {
-      const printNow=()=>{ win.focus(); setTimeout(()=>win.print(),50); };
-      win.document.querySelectorAll("[data-print-pdf]").forEach(btn=>{
-        btn.addEventListener("click", e=>{
-          e.preventDefault();
-          printNow();
-        });
-      });
-    } catch {}
-  },500);
-};
+const pdfPrintScript = `<script>
+  function scPrintPdf(){
+    try { window.focus(); } catch(e) {}
+    window.print();
+    return false;
+  }
+  window.addEventListener("load", function(){
+    document.querySelectorAll("[data-print-pdf]").forEach(function(btn){
+      btn.onclick = scPrintPdf;
+    });
+  });
+<\/script>`;
 
 const openQuotationPdf = async (lead, quote) => {
   const win=window.open("","_blank");
@@ -522,9 +520,9 @@ const openQuotationPdf = async (lead, quote) => {
     h1{margin:0;color:#1a3c5e;font-size:28px}.muted{color:#6b7280;font-size:12px;line-height:1.5}.box{border:1px solid #d1d5db;border-radius:8px;padding:14px;margin:14px 0;background:#fff}
     table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}th,td{border:1px solid #d1d5db;padding:9px;text-align:left;vertical-align:top}th{background:#eff6ff;color:#1a3c5e}
     .summary{margin-left:auto;width:320px}.summary div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb}.total{font-size:20px;font-weight:700;color:#16a34a;text-align:right;margin-top:12px}.small{font-size:11px;color:#6b7280}@media print{button{display:none}body{background:#fff}.page{border:0}}
-  </style></head><body>
+  </style>${pdfPrintScript}</head><body>
     <div class="page">
-    <button type="button" data-print-pdf="1" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px;cursor:pointer">Download / Save as PDF</button>
+    <button type="button" data-print-pdf="1" onclick="return scPrintPdf()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px;cursor:pointer">Download / Save as PDF</button>
     <div class="head"><div class="brand">${quotationLogo}<div><h1>Smart Covering</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>QUOTATION</b><br/><span class="muted">Quote No: QT-${lead.id}-${Date.now().toString().slice(-5)}<br/>Date: ${new Date().toLocaleDateString("en-IN")}</span></div></div>
     <div class="box"><b>Customer Details</b><br/>${lead.name}<br/>${lead.mobile}<br/>${lead.email||""}<br/>${lead.location||""}</div>
     <table><thead><tr><th>#</th><th>Product</th><th>Window</th><th>Color</th><th>Material / Details</th><th>SQFT</th><th>Rate / SQFT</th><th>GST</th><th>Amount</th></tr></thead><tbody>
@@ -536,7 +534,6 @@ const openQuotationPdf = async (lead, quote) => {
     </div>
   </body></html>`);
   win.document.close();
-  finishPrintablePopup(win);
 };
 
 const openCpRequestPdf = (partner, req) => {
@@ -553,8 +550,8 @@ const openCpRequestPdf = (partner, req) => {
     .box{border:1px solid #d1d5db;border-radius:8px;padding:12px;font-size:13px;line-height:1.6}.title{font-size:12px;font-weight:800;color:#374151;text-transform:uppercase;margin-bottom:6px}
     table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#f3f4f6}
     .footer{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;color:#374151}@media print{button{display:none}body{padding:18px}}
-  </style></head><body>
-    <button type="button" data-print-pdf="1" style="float:right;margin-bottom:12px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:700;cursor:pointer">Print / Save PDF</button>
+  </style>${pdfPrintScript}</head><body>
+    <button type="button" data-print-pdf="1" onclick="return scPrintPdf()" style="float:right;margin-bottom:12px;padding:8px 14px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-weight:700;cursor:pointer">Print / Save PDF</button>
     <div class="head"><div class="brand"><img class="logo" src="${logoUrl}" /><div><h1>${BRAND.name}</h1><div class="muted">${BRAND.appName}<br/>${BRAND.website}</div></div></div><div><b>CHANNEL PARTNER ORDER REQUEST</b><br/><span class="muted">Request ID: ${req.id||"-"}<br/>Date: ${req.date||todayStr()}<br/>Status: ${req.status||req.approval||"Pending"}</span></div></div>
     <div class="grid">
       <div class="box"><div class="title">Channel Partner</div><b>${partner?.name||"-"}</b><br/>Owner: ${partner?.owner||"-"}<br/>Mobile: ${partner?.mobile||"-"}<br/>City: ${partner?.city||"-"}</div>
@@ -568,7 +565,6 @@ const openCpRequestPdf = (partner, req) => {
     <div class="footer"><span>Checked By Management</span><span>For ${BRAND.name}</span></div>
   </body></html>`);
   win.document.close();
-  finishPrintablePopup(win);
 };
 
 const billTotals = order => {
@@ -615,8 +611,8 @@ const openBillPdf = (order, bill={}) => {
   if(!win)return alert("Please allow popups to generate bill PDF");
   win.document.write(`<!doctype html><html><head><title>Invoice ${invoiceNo}</title><style>
     body{font-family:Arial,sans-serif;color:#111827;margin:0;padding:28px;background:#f8fafc}.page{max-width:960px;margin:auto;background:#fff;border:1px solid #e5e7eb;padding:28px}.head{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid #1a3c5e;padding-bottom:16px;margin-bottom:18px}.brand{display:flex;gap:14px;align-items:flex-start}.logo{width:132px;height:132px;object-fit:contain}.muted{color:#6b7280;font-size:12px;line-height:1.5}h1{margin:0;color:#1a3c5e}.box{border:1px solid #d1d5db;border-radius:8px;padding:12px;margin:12px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#eff6ff;color:#1a3c5e}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e5e7eb}.total{font-size:19px;font-weight:700;color:#16a34a}.small{font-size:11px;color:#6b7280;line-height:1.5}@media print{button{display:none}body{background:#fff}.page{border:0}}
-  </style></head><body><div class="page">
-    <button type="button" data-print-pdf="1" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px;cursor:pointer">Download / Save as PDF</button>
+  </style>${pdfPrintScript}</head><body><div class="page">
+    <button type="button" data-print-pdf="1" onclick="return scPrintPdf()" style="float:right;padding:9px 14px;background:#1a3c5e;color:white;border:0;border-radius:6px;cursor:pointer">Download / Save as PDF</button>
     <div class="head"><div class="brand"><img class="logo" src="${logoUrl}" onerror="this.src='${BRAND.logo}'" /><div><h1>${BRAND.name}</h1><div class="muted">${company.products}<br/>${company.gst}<br/>${company.address}<br/>${company.email} | ${company.phone}</div></div></div><div><b>TAX INVOICE</b><br/><span class="muted">Invoice No: ${invoiceNo}<br/>Date: ${invoiceDate}<br/>Order: ${order.id}</span></div></div>
     <div class="grid"><div class="box"><b>Billed To</b><br/>${order.customer||""}<br/>${order.mobile||""}<br/>${customerAddress}<br/>GSTIN: ${customerGstin||"-"}</div><div class="box"><b>Supply Details</b><br/>Place of Supply: ${place}<br/>Reverse Charge: No<br/>Payment: Paid ${inr(totals.paid)} | Balance ${inr(totals.balance)}</div></div>
     <table><thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th>Size</th><th>Qty</th><th>Rate</th><th>Taxable Value</th></tr></thead><tbody>
@@ -627,7 +623,6 @@ const openBillPdf = (order, bill={}) => {
     <div style="display:flex;justify-content:space-between;margin-top:42px;font-size:12px"><span>Customer Signature</span><b>For ${BRAND.name}</b></div>
   </div></body></html>`);
   win.document.close();
-  finishPrintablePopup(win);
 };
 
 //  BASE COMPONENTS 
