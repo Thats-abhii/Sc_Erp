@@ -507,20 +507,14 @@ const wirePdfPrintButton = win => {
       const printNow = event => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
+        event?.stopImmediatePropagation?.();
         try { win.focus(); } catch {}
         win.print();
         return false;
       };
       doc.querySelectorAll("[data-print-pdf]").forEach(btn=>{
         btn.onclick=printNow;
-        if(!btn.dataset.printBound){
-          btn.addEventListener("click",printNow);
-          btn.dataset.printBound="1";
-        }
       });
-      doc.body?.addEventListener("click",event=>{
-        if(event.target?.closest?.("[data-print-pdf]"))printNow(event);
-      },{capture:true});
     } catch {}
   };
   bind();
