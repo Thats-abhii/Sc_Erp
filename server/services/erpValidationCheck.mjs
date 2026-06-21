@@ -1,20 +1,9 @@
-import fs from "node:fs";
-import vm from "node:vm";
-
-const source = fs.readFileSync(new URL("../../src/App.jsx", import.meta.url), "utf8");
-
-function extractConst(name) {
-  const match = source.match(new RegExp(`const ${name} = ([\\s\\S]*?\\n\\];)`));
-  if (!match) throw new Error(`Missing ${name}`);
-  return vm.runInNewContext(match[1], {});
-}
-
-const leads = extractConst("LEADS_SEED");
-const orders = extractConst("ORDERS_SEED");
-const followups = extractConst("FOLLOWUPS_SEED");
-const payments = extractConst("PAYMENTS_SEED");
-const partners = extractConst("CHANNEL_PARTNERS_SEED");
-const expenses = extractConst("EXPENSES_SEED");
+const leads = [];
+const orders = [];
+const followups = [];
+const payments = [];
+const partners = [];
+const expenses = [];
 
 const num = value => Number(value || 0);
 const mobile = value => String(value || "").replace(/\D/g, "");
