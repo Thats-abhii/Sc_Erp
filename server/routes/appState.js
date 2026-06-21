@@ -14,6 +14,8 @@ const allowedKeys = new Set([
   "bills",
   "purchases",
   "smartInventory",
+  "inventory",
+  "workOrders",
   "expenses",
   "reassignmentLogs",
   "auditLogs"
