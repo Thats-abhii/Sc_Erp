@@ -34,6 +34,11 @@ appStateRouter.get("/", async (_req, res, next) => {
 
 appStateRouter.put("/", async (req, res, next) => {
   try {
+    if (process.env.ALLOW_APP_STATE_WRITES !== "true") {
+      return res.status(410).json({
+        error: "app_state writes are disabled. Use /api/relational-state after migration."
+      });
+    }
     const entries = Object.entries(req.body?.state || {}).filter(([key]) => allowedKeys.has(key));
     if (!entries.length) return res.status(400).json({ error: "No valid app state keys supplied" });
 
