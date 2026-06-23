@@ -14,7 +14,6 @@ import { webhooksRouter } from "./routes/webhooks.js";
 import { ordersRouter } from "./routes/orders.js";
 import { coreRouter } from "./routes/core.js";
 import { appStateRouter } from "./routes/appState.js";
-import { relationalStateRouter } from "./routes/relationalState.js";
 import { query } from "./db/pool.js";
 
 const app = express();
@@ -30,8 +29,6 @@ if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
 if (process.env.DATABASE_URL) {
   const schema = await readFile(schemaPath, "utf8");
   await query(schema);
-  const relationalSchema = await readFile(path.join(__dirname, "db", "app_state_relational_schema.sql"), "utf8");
-  await query(relationalSchema);
   console.log("Database schema checked");
 
   const adminLoginId = (process.env.ADMIN_BOOTSTRAP_LOGIN_ID || "admin").trim().toLowerCase();
@@ -59,7 +56,6 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, service: "smartcoveri
 app.use("/api/auth", authRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/app-state", appStateRouter);
-app.use("/api/relational-state", relationalStateRouter);
 app.use("/api/leads", requireAuth, leadsRouter);
 app.use("/api/orders", requireAuth, ordersRouter);
 app.use("/api", requireAuth, coreRouter);
