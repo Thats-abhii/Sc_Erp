@@ -435,10 +435,10 @@ export default function App() {
   return (
     <>
       <style>{css}</style>
-      <div style={{display:"flex",height:"100vh",overflow:"hidden",fontFamily:"'Inter',sans-serif",background:T.bg}}>
+      <div className="sc-app-shell" style={{display:"flex",height:"100vh",overflow:"hidden",fontFamily:"'Inter',sans-serif",background:T.bg}}>
 
         {/*  SIDEBAR  */}
-        <aside style={{
+        <aside className="sc-app-sidebar" style={{
           width: collapsed?64:220,
           background:T.surf,
           borderRight:`1px solid ${T.border}`,
@@ -502,9 +502,9 @@ export default function App() {
         </aside>
 
         {/*  MAIN CONTENT  */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div className="sc-app-main-wrap" style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
           {/* Topbar */}
-          <header style={{
+          <header className="sc-app-header" style={{
             height:78,flexShrink:0,
             background:T.surf,
             borderBottom:`1px solid ${T.border}`,
@@ -542,18 +542,18 @@ export default function App() {
 
           {/* Manager Read-only Banner */}
           {isSalesman&&mod!=="dashboard"&&(
-            <div style={{background:"#f5f3ff",borderBottom:"1px solid #ddd6fe",padding:"8px 24px",fontSize:12,color:"#6d28d9",display:"flex",alignItems:"center",gap:6}}>
+            <div className="sc-manager-banner" style={{background:"#f5f3ff",borderBottom:"1px solid #ddd6fe",padding:"8px 24px",fontSize:12,color:"#6d28d9",display:"flex",alignItems:"center",gap:6}}>
               Salesman view - you can view and update only your assigned leads.
             </div>
           )}
           {isProductionTeam&&(
-            <div style={{background:"#ecfdf5",borderBottom:"1px solid #bbf7d0",padding:"8px 24px",fontSize:12,color:"#047857",display:"flex",alignItems:"center",gap:6}}>
+            <div className="sc-manager-banner" style={{background:"#ecfdf5",borderBottom:"1px solid #bbf7d0",padding:"8px 24px",fontSize:12,color:"#047857",display:"flex",alignItems:"center",gap:6}}>
               Production view - update cutting, assembling, quality check and completed stages only. Approval, Hold and installation dates are managed by Management.
             </div>
           )}
 
           {/* Module Content */}
-          <main style={{flex:1,overflowY:"auto",padding:24}}>
+          <main className="sc-module-main" style={{flex:1,overflowY:"auto",padding:24}}>
             {moduleMap[mod]}
           </main>
         </div>
