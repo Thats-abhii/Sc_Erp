@@ -626,7 +626,9 @@ const openBillPdf = (order, bill={}) => {
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+  html, body, #root { min-width:0; max-width:100%; overflow-x:hidden; }
   body { font-family:'Inter',sans-serif; background:${T.bg}; color:${T.text}; }
+  img, svg, video, canvas { max-width:100%; }
   ::-webkit-scrollbar { width:5px; height:5px; }
   ::-webkit-scrollbar-track { background:transparent; }
   ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:99px; }
@@ -647,10 +649,67 @@ const css = `
   select option { background:#ffffff; color:${T.text}; }
   label { font-size:12px; font-weight:600; color:${T.sub}; letter-spacing:.2px; text-transform:none; display:block; margin-bottom:6px; }
   @keyframes smartcoveringSpin { to { transform: rotate(360deg); } }
+
+  .sc-app-shell, .sc-app-main-wrap, .sc-module-main, .sc-responsive-card, .sc-modal-panel, .sc-section-title { min-width:0; }
+  .sc-table-wrap { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .sc-table-wrap table { min-width:760px; }
+  .sc-modal-overlay { overflow:auto; }
+  .sc-action-row, .sc-section-title { flex-wrap:wrap; }
+
+  @media (max-width: 1024px) {
+    .sc-app-sidebar { width:64px !important; }
+    .sc-app-header { padding:0 16px !important; gap:12px !important; }
+    .sc-module-main { padding:18px !important; }
+    .sc-form-row { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  }
+
+  @media (max-width: 768px) {
+    .sc-app-shell { height:auto !important; min-height:100vh; overflow:visible !important; }
+    .sc-app-sidebar {
+      position:sticky;
+      top:0;
+      z-index:50;
+      width:56px !important;
+      height:100vh;
+      max-height:100vh;
+    }
+    .sc-app-main-wrap { min-width:0; width:calc(100vw - 56px); }
+    .sc-app-header {
+      height:auto !important;
+      min-height:68px;
+      padding:10px 12px !important;
+      align-items:flex-start !important;
+      flex-wrap:wrap;
+    }
+    .sc-app-header > div { min-width:0; }
+    .sc-app-header button { min-height:34px; }
+    .sc-module-main { padding:14px !important; overflow-x:hidden; }
+    .sc-manager-banner { padding:8px 12px !important; line-height:1.35; }
+    .sc-form-row { grid-template-columns:1fr !important; gap:10px !important; }
+    .sc-modal-overlay { align-items:flex-start !important; padding:10px !important; }
+    .sc-modal-panel { max-width:100% !important; max-height:calc(100vh - 20px) !important; }
+    .sc-modal-header, .sc-modal-body { padding:14px 16px !important; }
+    .sc-responsive-card { padding:16px !important; }
+    .sc-section-title { gap:10px; align-items:flex-start !important; }
+    .sc-section-title > * { min-width:0; }
+    input, select, textarea { font-size:14px; min-height:40px; }
+    button { max-width:100%; }
+    .sc-table-wrap table { min-width:860px; }
+  }
+
+  @media (max-width: 480px) {
+    .sc-app-sidebar { width:52px !important; }
+    .sc-app-main-wrap { width:calc(100vw - 52px); }
+    .sc-module-main { padding:10px !important; }
+    .sc-app-header { padding:8px 10px !important; }
+    .sc-responsive-card { padding:14px !important; }
+    .sc-table-wrap table { min-width:920px; font-size:12px !important; }
+    .sc-table-wrap th, .sc-table-wrap td { padding:8px 10px !important; }
+  }
 `;
 
 const GlassCard = ({ children, style={}, onClick, hover=false }) => (
-  <div onClick={onClick} style={{
+  <div className="sc-responsive-card" onClick={onClick} style={{
     background:T.card,
     border:`1px solid ${T.border}`,
     borderRadius:8,
@@ -701,7 +760,7 @@ const priorityMeta = { Hot:{color:"#f87171"}, Warm:{color:"#f59e0b"}, Cold:{colo
 const StatusPill = ({ s }) => { const m=statusMeta[s]||{color:"#64748b",label:s}; return <Pill label={m.label} color={m.color} />; };
 
 const PrimaryBtn = ({ children, onClick, color=T.amber, small=false, disabled=false }) => (
-  <button onClick={disabled?undefined:onClick} disabled={disabled} style={{
+  <button className="sc-btn" onClick={disabled?undefined:onClick} disabled={disabled} style={{
     background:`linear-gradient(135deg,${color},${color}cc)`,
     color:color==="#f59e0b"?"#0f172a":"#fff",
     border:"none", cursor:disabled?"not-allowed":"pointer",
@@ -729,7 +788,7 @@ const ButtonSpinner = ({ color="currentColor" }) => (
 );
 
 const GhostBtn = ({ children, onClick, small=false }) => (
-  <button onClick={onClick} style={{
+  <button className="sc-btn" onClick={onClick} style={{
     background:"transparent",
     color:T.sub,
     border:`1px solid ${T.border}`,
@@ -744,7 +803,7 @@ const GhostBtn = ({ children, onClick, small=false }) => (
 );
 
 const DangerBtn = ({ children, onClick, small=false }) => (
-  <button onClick={onClick} style={{
+  <button className="sc-btn" onClick={onClick} style={{
     background:`${T.red}22`, color:T.red,
     border:`1px solid ${T.red}44`, cursor:"pointer",
     borderRadius:10, fontWeight:500, fontFamily:"inherit",
@@ -754,7 +813,7 @@ const DangerBtn = ({ children, onClick, small=false }) => (
 );
 
 const SuccessBtn = ({ children, onClick, small=false, disabled=false }) => (
-  <button onClick={disabled?undefined:onClick} disabled={disabled} style={{
+  <button className="sc-btn" onClick={disabled?undefined:onClick} disabled={disabled} style={{
     background:`${T.green}22`, color:T.green,
     border:`1px solid ${T.green}44`, cursor:disabled?"not-allowed":"pointer",
     opacity:disabled ? .65 : 1,
@@ -769,13 +828,13 @@ const Code = ({ children }) => <span style={{fontFamily:"'Space Grotesk',sans-se
 const Divider = () => <div style={{height:1,background:T.border,margin:"16px 0"}} />;
 
 const Modal = ({ title, onClose, children, wide=false }) => (
-  <div style={{
+  <div className="sc-modal-overlay" style={{
     position:"fixed",inset:0,zIndex:1000,
     background:"rgba(0,0,0,.75)",
     display:"flex",alignItems:"center",justifyContent:"center",
     padding:16,backdropFilter:"blur(4px)",
   }}>
-    <div style={{
+    <div className="sc-modal-panel" style={{
       background:T.card,
       border:`1px solid ${T.border}`,
       borderRadius:12,
@@ -783,17 +842,17 @@ const Modal = ({ title, onClose, children, wide=false }) => (
       maxHeight:"90vh",overflowY:"auto",
       boxShadow:"0 25px 60px rgba(0,0,0,.6)",
     }}>
-      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 24px", borderBottom:`1px solid ${T.border}` }}>
+      <div className="sc-modal-header" style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 24px", borderBottom:`1px solid ${T.border}` }}>
         <span style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:600,fontSize:16,color:T.text}}>{title}</span>
         <button onClick={onClose} style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:8,width:30,height:30,color:T.sub,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>x</button>
       </div>
-      <div style={{padding:"20px 24px"}}>{children}</div>
+      <div className="sc-modal-body" style={{padding:"20px 24px"}}>{children}</div>
     </div>
   </div>
 );
 
 const FormRow = ({ cols=2, children }) => (
-  <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:14,marginBottom:14}}>{children}</div>
+  <div className="sc-form-row" style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:14,marginBottom:14}}>{children}</div>
 );
 
 const Field = ({ label, children }) => (
@@ -814,7 +873,7 @@ const StatKPI = ({ label, value, sub, accent=T.amber, icon }) => (
 );
 
 const SectionTitle = ({ children, action }) => (
-  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+  <div className="sc-section-title" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
     <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:18,fontWeight:700,color:T.text}}>{children}</h2>
     {action}
   </div>
@@ -822,7 +881,7 @@ const SectionTitle = ({ children, action }) => (
 
 //  TABLE WRAPPER 
 const Table = ({ headers, children, empty="No records found." }) => (
-  <div style={{overflowX:"auto"}}>
+  <div className="sc-table-wrap" style={{overflowX:"auto"}}>
     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
       <thead>
         <tr>
