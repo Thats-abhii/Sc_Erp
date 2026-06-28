@@ -210,6 +210,90 @@ create table if not exists app_state (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists sc_leads (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_orders (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_followups (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_payments (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_salesmen (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_channel_partners (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_bills (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_purchases (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_work_orders (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_expenses (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_reassignment_logs (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_app_audit_logs (
+  record_id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_smart_inventory_state (
+  record_id text primary key default 'state',
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists sc_inventory_state (
+  record_id text primary key default 'state',
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_leads_source on leads(source);
 create index if not exists idx_leads_status on leads(status);
 create index if not exists idx_followups_due_at on followups(due_at);
@@ -221,3 +305,7 @@ create unique index if not exists ux_orders_mobile on orders(mobile);
 create unique index if not exists ux_orders_lead_present on orders(lead_id) where lead_id is not null;
 create unique index if not exists ux_salesmen_mobile on salesmen(mobile);
 create unique index if not exists ux_salesmen_email_present on salesmen(lower(email)) where email is not null and email <> '';
+create index if not exists idx_sc_leads_data_gin on sc_leads using gin (data);
+create index if not exists idx_sc_orders_data_gin on sc_orders using gin (data);
+create index if not exists idx_sc_payments_data_gin on sc_payments using gin (data);
+create index if not exists idx_sc_expenses_data_gin on sc_expenses using gin (data);
