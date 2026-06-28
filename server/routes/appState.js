@@ -67,17 +67,37 @@ async function ensureModuleTables() {
 }
 
 const camelMap = {
-  sc_leads: r => ({ ...r, salesmanId: r.salesman_id, productInterest: r.product_interest }),
-  sc_orders: r => ({ ...r, leadId: r.lead_id, customerName: r.customer_name, finalAmount: r.final_amount, advancePaid: r.advance_paid, balanceDue: r.balance_due, deliveryDate: r.delivery_date, installationRequired: r.installation_required }),
-  sc_salesmen: r => ({ ...r, joiningDate: r.joining_date, loginId: r.login_id }),
-  sc_channel_partners: r => ({ ...r, loginId: r.login_id }),
-  sc_payments: r => ({ ...r, orderId: r.order_id, paidOn: r.paid_on }),
-  sc_expenses: r => ({ ...r, spentOn: r.spent_on }),
-  sc_purchases: r => ({ ...r, itemName: r.item_name, unitPrice: r.unit_price, totalAmount: r.total_amount, purchaseDate: r.purchase_date }),
-  sc_bills: r => ({ ...r, dueDate: r.due_date }),
-  sc_work_orders: r => ({ ...r, orderId: r.order_id, productName: r.product_name, rawMaterials: r.raw_materials, assignedStaff: r.assigned_staff, startDate: r.start_date, expectedCompletionDate: r.expected_completion_date, completedAt: r.completed_at }),
+  leads: r => ({ ...r, salesmanId: r.salesman_id, productInterest: r.product_interest, alternateMobile: r.alternate_mobile }),
+  orders: r => ({ ...r, leadId: r.lead_id, customerName: r.customer_name, finalAmount: r.final_amount, advancePaid: r.advance_paid, balanceDue: r.balance_due, deliveryDate: r.delivery_date, installationRequired: r.installation_required }),
+  salesmen: r => ({ ...r, joiningDate: r.joining_date }),
+  payments: r => ({ ...r, orderId: r.order_id, paidOn: r.paid_on }),
+  expenses: r => ({ ...r, spentOn: r.spent_on }),
+  workOrders: r => ({ ...r, orderId: r.order_id, productName: r.product_name, rawMaterials: r.raw_materials, assignedStaff: r.assigned_staff, startDate: r.start_date, expectedCompletionDate: r.expected_completion_date, completedAt: r.completed_at }),
 };
 
+const directTables = {
+  leads: "leads",
+  orders: "orders",
+  salesmen: "salesmen",
+  payments: "payments",
+  expenses: "expenses",
+  workOrders: "work_orders",
+  channelPartners: "sc_channel_partners",
+  bills: "sc_bills",
+  purchases: "sc_purchases",
+};
+
+async function readCollection(key, table) {
+  const actualTable = directTables[key] || table;
+  try {
+    const rows = await query(`select * from ${actualTable} order by created_at desc`);
+    const remap = camelMap[key];
+    return remap ? rows.map(remap) : rows;
+  } catch (error) {
+    console.error(`readCollection failed for ${actualTable}:`, error.message);
+    return [];
+  }
+}
 async function readCollection(table) {
   try {
     const rows = await query(`select * from ${table} order by updated_at asc`);
@@ -159,22 +179,20 @@ appStateRouter.get("/", async (_req, res, next) => {
     const state = {};
 
     for (const [key, table] of Object.entries(collectionTables)) {
-      if (blobKeys.has(key)) {
-        try {
-          const rows = await query(`select data from ${table} order by updated_at asc, record_id asc`);
-          state[key] = rows.map((row) => row.data);
-        } catch {
-          state[key] = [];
-        }
-      } else {
-        state[key] = await readCollection(table);
-      }
+  if (blobKeys.has(key)) {
+    try {
+      const rows = await query(`select data from ${table} order by updated_at asc, record_id asc`);
+      state[key] = rows.map((row) => row.data);
+    } catch {
+      state[key] = [];
     }
-
-    for (const [key, table] of Object.entries(objectTables)) {
-      state[key] = await readObject(table);
-    }
-
+  } else {
+    state[key] = await readCollection(key, table);
+  }
+}
+for (const [key, table] of Object.entries(objectTables)) {
+  state[key] = await readObject(table);
+}
     console.log("Loaded ERP state from Neon", { storage: "module_tables" });
     res.json({ state, storage: "module_tables" });
   } catch (error) {
