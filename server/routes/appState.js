@@ -26,6 +26,29 @@ const objectTables = {
 
 const allowedKeys = new Set([...Object.keys(collectionTables), ...Object.keys(objectTables)]);
 
+let moduleTablesReady = false;
+
+async function ensureModuleTables() {
+  if (moduleTablesReady) return;
+  await query(`
+    create table if not exists sc_leads (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_orders (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_followups (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_payments (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_salesmen (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_channel_partners (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_bills (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_purchases (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_work_orders (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_expenses (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_reassignment_logs (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_app_audit_logs (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_smart_inventory_state (record_id text primary key default 'state', data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+    create table if not exists sc_inventory_state (record_id text primary key default 'state', data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
+  `);
+  moduleTablesReady = true;
+}
+
 const stableRecordId = (key, record, index) => {
   const explicitId = record?.id ?? record?.orderId ?? record?.invoiceNo ?? record?.code;
   return String(explicitId || `${key}-${index + 1}`);
@@ -90,6 +113,7 @@ appStateRouter.use(requireAuth);
 
 appStateRouter.get("/", async (_req, res, next) => {
   try {
+    await ensureModuleTables();
     const state = {};
     let relationalCount = 0;
     const legacy = await readLegacyAppState();
@@ -119,6 +143,7 @@ appStateRouter.get("/", async (_req, res, next) => {
 
 appStateRouter.put("/", async (req, res, next) => {
   try {
+    await ensureModuleTables();
     const entries = Object.entries(req.body?.state || {}).filter(([key]) => allowedKeys.has(key));
     if (!entries.length) return res.status(400).json({ error: "No valid app state keys supplied" });
 
@@ -133,6 +158,7 @@ appStateRouter.put("/", async (req, res, next) => {
         saved.push({ key, table: objectTables[key], count: 1 });
       }
     }
+    console.log("Saved ERP state to Neon module tables", saved);
     res.json({ ok: true, storage: "module_tables", saved });
   } catch (error) {
     next(error);
