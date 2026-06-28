@@ -27,6 +27,7 @@ const objectTables = {
 const allowedKeys = new Set([...Object.keys(collectionTables), ...Object.keys(objectTables)]);
 
 let moduleTablesReady = false;
+const tableColumnCache = new Map();
 
 async function ensureModuleTables() {
   if (moduleTablesReady) return;
@@ -54,6 +55,23 @@ const stableRecordId = (key, record, index) => {
   const explicitId = record?.id ?? record?.orderId ?? record?.invoiceNo ?? record?.code;
   return String(explicitId || `${key}-${index + 1}`);
 };
+
+async function tableHasColumn(table, column) {
+  const cacheKey = `${table}.${column}`;
+  if (tableColumnCache.has(cacheKey)) return tableColumnCache.get(cacheKey);
+  const rows = await query(
+    `select 1
+     from information_schema.columns
+     where table_schema = 'public'
+       and table_name = $1
+       and column_name = $2
+     limit 1`,
+    [table, column]
+  );
+  const exists = !!rows[0];
+  tableColumnCache.set(cacheKey, exists);
+  return exists;
+}
 
 async function readCollection(table) {
   const rows = await query(`select data from ${table} order by updated_at asc, record_id asc`);
@@ -108,13 +126,22 @@ async function saveCollection(key, table, records) {
   for (let index = 0; index < list.length; index += 1) {
     const record = list[index] || {};
     const recordId = ids[index];
-    const rows = await query(
-      `insert into ${table} (record_id, data, updated_at)
-       values ($1, $2::jsonb, now())
-       on conflict (record_id) do update set data = excluded.data, updated_at = now()
-       returning record_id, updated_at`,
-      [recordId, JSON.stringify(record)]
-    );
+    const hasId = await tableHasColumn(table, "id");
+    const rows = hasId
+      ? await query(
+        `insert into ${table} (id, record_id, data, updated_at)
+         values ($1, $1, $2::jsonb, now())
+         on conflict (record_id) do update set data = excluded.data, updated_at = now()
+         returning record_id, updated_at`,
+        [recordId, JSON.stringify(record)]
+      )
+      : await query(
+        `insert into ${table} (record_id, data, updated_at)
+         values ($1, $2::jsonb, now())
+         on conflict (record_id) do update set data = excluded.data, updated_at = now()
+         returning record_id, updated_at`,
+        [recordId, JSON.stringify(record)]
+      );
     saved.push(rows[0]);
   }
   return saved;
