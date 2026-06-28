@@ -31,6 +31,7 @@ let moduleTablesReady = false;
 async function ensureModuleTables() {
   if (moduleTablesReady) return;
   await query(`
+    create table if not exists app_state (key text primary key, value jsonb not null default 'null'::jsonb, updated_at timestamptz not null default now());
     create table if not exists sc_leads (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
     create table if not exists sc_orders (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
     create table if not exists sc_followups (record_id text primary key, data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
@@ -65,22 +66,32 @@ async function readObject(table) {
 }
 
 async function readLegacyAppState() {
-  const rows = await query("select key, value, updated_at from app_state order by key");
-  return {
-    state: Object.fromEntries(rows.map((row) => [row.key, row.value])),
-    updatedAt: Object.fromEntries(rows.map((row) => [row.key, row.updated_at]))
-  };
+  try {
+    const rows = await query("select key, value, updated_at from app_state order by key");
+    return {
+      state: Object.fromEntries(rows.map((row) => [row.key, row.value])),
+      updatedAt: Object.fromEntries(rows.map((row) => [row.key, row.updated_at]))
+    };
+  } catch (error) {
+    console.error("Legacy app_state read failed; continuing with module tables", error);
+    return { state: {}, updatedAt: {} };
+  }
 }
 
 async function saveLegacyAppState(key, value) {
-  const rows = await query(
-    `insert into app_state (key, value, updated_at)
-     values ($1, $2::jsonb, now())
-     on conflict (key) do update set value = excluded.value, updated_at = now()
-     returning key, updated_at`,
-    [key, JSON.stringify(value ?? null)]
-  );
-  return rows[0];
+  try {
+    const rows = await query(
+      `insert into app_state (key, value, updated_at)
+       values ($1, $2::jsonb, now())
+       on conflict (key) do update set value = excluded.value, updated_at = now()
+       returning key, updated_at`,
+      [key, JSON.stringify(value ?? null)]
+    );
+    return rows[0];
+  } catch (error) {
+    console.error(`Legacy app_state save failed for ${key}; module table save will continue`, error);
+    return null;
+  }
 }
 
 async function saveCollection(key, table, records) {
@@ -146,8 +157,13 @@ appStateRouter.get("/", async (_req, res, next) => {
       return res.json(legacy);
     }
 
+    console.log("Loaded ERP state from Neon", {
+      storage: relationalCount ? "module_tables" : "app_state",
+      records: relationalCount
+    });
     res.json({ state, storage: "module_tables" });
   } catch (error) {
+    console.error("GET /api/app-state failed", error);
     next(error);
   }
 });
@@ -163,16 +179,17 @@ appStateRouter.put("/", async (req, res, next) => {
       const legacyRow = await saveLegacyAppState(key, value);
       if (collectionTables[key]) {
         const rows = await saveCollection(key, collectionTables[key], value);
-        saved.push({ key, table: collectionTables[key], legacy: "app_state", count: rows.length, updatedAt: legacyRow.updated_at });
+        saved.push({ key, table: collectionTables[key], legacy: legacyRow ? "app_state" : "skipped", count: rows.length, updatedAt: legacyRow?.updated_at || null });
       }
       if (objectTables[key]) {
         await saveObject(objectTables[key], value);
-        saved.push({ key, table: objectTables[key], legacy: "app_state", count: 1, updatedAt: legacyRow.updated_at });
+        saved.push({ key, table: objectTables[key], legacy: legacyRow ? "app_state" : "skipped", count: 1, updatedAt: legacyRow?.updated_at || null });
       }
     }
     console.log("Saved ERP state to Neon module tables", saved);
     res.json({ ok: true, storage: "module_tables", saved });
   } catch (error) {
+    console.error("PUT /api/app-state failed", error);
     next(error);
   }
 });
