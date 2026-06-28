@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/auth.js";\
+import { saveCollection } from "../db/saveCollection.js";
 
 export const appStateRouter = Router();
 
@@ -203,16 +204,19 @@ appStateRouter.put("/", async (req, res, next) => {
 
     const saved = [];
     for (const [key, value] of entries) {
-      const legacyRow = await saveLegacyAppState(key, value);
+      await saveLegacyAppState(key, value);
+
       if (collectionTables[key]) {
-        const rows = await saveCollection(key, collectionTables[key], value);
-        saved.push({ key, table: collectionTables[key], legacy: legacyRow ? "app_state" : "skipped", count: rows.length, updatedAt: legacyRow?.updated_at || null });
+        const rows = await saveCollection(key, value);
+        saved.push({ key, table: collectionTables[key], count: rows.length });
       }
+
       if (objectTables[key]) {
         await saveObject(objectTables[key], value);
-        saved.push({ key, table: objectTables[key], legacy: legacyRow ? "app_state" : "skipped", count: 1, updatedAt: legacyRow?.updated_at || null });
+        saved.push({ key, table: objectTables[key], count: 1 });
       }
     }
+
     console.log("Saved ERP state to Neon module tables", saved);
     res.json({ ok: true, storage: "module_tables", saved });
   } catch (error) {
