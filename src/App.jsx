@@ -246,6 +246,7 @@ export default function App() {
   const [activePartnerId,setActivePartnerId]=useState(null);
   const [authPassword,setAuthPassword]=useState("");
   const [sessionLoginAt,setSessionLoginAt]=useState(0);
+  const [sharedStateLoaded,setSharedStateLoaded]=useState(false);
   const sharedStateReadyRef=useRef(false);
   const sharedStateSaveTimerRef=useRef(null);
   const sessionExpiredNoticeRef=useRef(false);
@@ -285,9 +286,12 @@ export default function App() {
   useEffect(()=>{
     if(!role){
       sharedStateReadyRef.current=false;
+      setSharedStateLoaded(false);
       return;
     }
     let cancelled=false;
+    sharedStateReadyRef.current=false;
+    setSharedStateLoaded(false);
     fetchSharedAppState().then(data=>{
       if(cancelled)return;
       const state=data?.state||{};
@@ -306,21 +310,30 @@ export default function App() {
       if(Array.isArray(state.expenses))setExpenses(state.expenses);
       if(Array.isArray(state.reassignmentLogs))setReassignLogs(state.reassignmentLogs);
       sharedStateReadyRef.current=true;
+      setSharedStateLoaded(true);
       if(!hasBackendState)sharedStateReadyRef.current=true;
+      console.info("SmartCovering ERP state loaded from backend", { storage:data?.storage||"app_state", keys:Object.keys(state) });
     }).catch(error=>{
       if(isAuthExpiredError(error))forceLogoutForExpiredSession();
-      sharedStateReadyRef.current=false;
+      sharedStateReadyRef.current=true;
+      setSharedStateLoaded(true);
+      console.error("SmartCovering ERP state load failed. Future changes will still try to save.", error);
     });
     return ()=>{ cancelled=true; };
   },[role]);
   useEffect(()=>{
-    if(!sharedStateReadyRef.current)return;
+    if(!role||!sharedStateLoaded||!sharedStateReadyRef.current)return;
     clearTimeout(sharedStateSaveTimerRef.current);
     sharedStateSaveTimerRef.current=setTimeout(()=>{
-      saveSharedAppState(currentSharedState()).catch(error=>{ if(isAuthExpiredError(error))forceLogoutForExpiredSession(); });
+      saveSharedAppState(currentSharedState())
+        .then(result=>console.info("SmartCovering ERP state saved to backend", result))
+        .catch(error=>{
+          console.error("SmartCovering ERP state save failed", error);
+          if(isAuthExpiredError(error))forceLogoutForExpiredSession();
+        });
     },700);
     return ()=>clearTimeout(sharedStateSaveTimerRef.current);
-  },[leads,orders,followups,payments,salesmen,channelPartners,bills,purchases,smartInventory,inventory,workOrders,expenses,reassignLogs]);
+  },[role,sharedStateLoaded,leads,orders,followups,payments,salesmen,channelPartners,bills,purchases,smartInventory,inventory,workOrders,expenses,reassignLogs]);
   useEffect(()=>{
     if(!role)return;
     const checkSession=()=>{
