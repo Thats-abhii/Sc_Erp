@@ -49,7 +49,7 @@ if (process.env.DATABASE_URL) {
 
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") || true, credentials: true }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "25mb" }));
 app.use(morgan("dev"));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "smartcovering-erp-api" }));
