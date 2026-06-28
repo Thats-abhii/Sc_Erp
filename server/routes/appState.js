@@ -75,13 +75,23 @@ async function tableHasColumn(table, column) {
 }
 
 async function readCollection(table) {
-  const rows = await query(`select data from ${table} order by updated_at asc, record_id asc`);
-  return rows.map((row) => row.data);
+  try {
+    const rows = await query(`select * from ${table} order by updated_at asc`);
+    return rows;
+  } catch (error) {
+    console.error(`readCollection failed for ${table}:`, error.message);
+    return [];
+  }
 }
 
 async function readObject(table) {
-  const rows = await query(`select data from ${table} where record_id = 'state' limit 1`);
-  return rows[0]?.data || null;
+  try {
+    const rows = await query(`select data from ${table} where record_id = 'state' limit 1`);
+    return rows[0]?.data || null;
+  } catch (error) {
+    console.error(`readObject failed for ${table}:`, error.message);
+    return null;
+  }
 }
 
 async function readLegacyAppState() {
