@@ -14,6 +14,7 @@ import { webhooksRouter } from "./routes/webhooks.js";
 import { ordersRouter } from "./routes/orders.js";
 import { coreRouter } from "./routes/core.js";
 import { appStateRouter } from "./routes/appState.js";
+import { crmRouter } from "./routes/crm.js";
 import { query } from "./db/pool.js";
 
 const app = express();
@@ -56,6 +57,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, service: "smartcoveri
 app.use("/api/auth", authRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/app-state", appStateRouter);
+app.use("/api/crm", requireAuth, crmRouter);
 app.use("/api/leads", requireAuth, leadsRouter);
 app.use("/api/orders", requireAuth, ordersRouter);
 app.use("/api", requireAuth, coreRouter);
