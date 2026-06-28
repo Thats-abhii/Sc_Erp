@@ -72,6 +72,17 @@ async function readLegacyAppState() {
   };
 }
 
+async function saveLegacyAppState(key, value) {
+  const rows = await query(
+    `insert into app_state (key, value, updated_at)
+     values ($1, $2::jsonb, now())
+     on conflict (key) do update set value = excluded.value, updated_at = now()
+     returning key, updated_at`,
+    [key, JSON.stringify(value ?? null)]
+  );
+  return rows[0];
+}
+
 async function saveCollection(key, table, records) {
   const list = Array.isArray(records) ? records : [];
   const ids = list.map((record, index) => stableRecordId(key, record, index));
@@ -149,13 +160,14 @@ appStateRouter.put("/", async (req, res, next) => {
 
     const saved = [];
     for (const [key, value] of entries) {
+      const legacyRow = await saveLegacyAppState(key, value);
       if (collectionTables[key]) {
         const rows = await saveCollection(key, collectionTables[key], value);
-        saved.push({ key, table: collectionTables[key], count: rows.length });
+        saved.push({ key, table: collectionTables[key], legacy: "app_state", count: rows.length, updatedAt: legacyRow.updated_at });
       }
       if (objectTables[key]) {
         await saveObject(objectTables[key], value);
-        saved.push({ key, table: objectTables[key], count: 1 });
+        saved.push({ key, table: objectTables[key], legacy: "app_state", count: 1, updatedAt: legacyRow.updated_at });
       }
     }
     console.log("Saved ERP state to Neon module tables", saved);
