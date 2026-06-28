@@ -4,29 +4,114 @@ import { requireAuth } from "../middleware/auth.js";
 
 export const appStateRouter = Router();
 
-const allowedKeys = new Set([
-  "leads",
-  "orders",
-  "followups",
-  "payments",
-  "salesmen",
-  "channelPartners",
-  "bills",
-  "purchases",
-  "smartInventory",
-  "inventory",
-  "workOrders",
-  "expenses",
-  "reassignmentLogs",
-  "auditLogs"
-]);
+const collectionTables = {
+  leads: "sc_leads",
+  orders: "sc_orders",
+  followups: "sc_followups",
+  payments: "sc_payments",
+  salesmen: "sc_salesmen",
+  channelPartners: "sc_channel_partners",
+  bills: "sc_bills",
+  purchases: "sc_purchases",
+  workOrders: "sc_work_orders",
+  expenses: "sc_expenses",
+  reassignmentLogs: "sc_reassignment_logs",
+  auditLogs: "sc_app_audit_logs"
+};
+
+const objectTables = {
+  smartInventory: "sc_smart_inventory_state",
+  inventory: "sc_inventory_state"
+};
+
+const allowedKeys = new Set([...Object.keys(collectionTables), ...Object.keys(objectTables)]);
+
+const stableRecordId = (key, record, index) => {
+  const explicitId = record?.id ?? record?.orderId ?? record?.invoiceNo ?? record?.code;
+  return String(explicitId || `${key}-${index + 1}`);
+};
+
+async function readCollection(table) {
+  const rows = await query(`select data from ${table} order by updated_at asc, record_id asc`);
+  return rows.map((row) => row.data);
+}
+
+async function readObject(table) {
+  const rows = await query(`select data from ${table} where record_id = 'state' limit 1`);
+  return rows[0]?.data || null;
+}
+
+async function readLegacyAppState() {
+  const rows = await query("select key, value, updated_at from app_state order by key");
+  return {
+    state: Object.fromEntries(rows.map((row) => [row.key, row.value])),
+    updatedAt: Object.fromEntries(rows.map((row) => [row.key, row.updated_at]))
+  };
+}
+
+async function saveCollection(key, table, records) {
+  const list = Array.isArray(records) ? records : [];
+  const ids = list.map((record, index) => stableRecordId(key, record, index));
+
+  if (ids.length) {
+    await query(`delete from ${table} where not (record_id = any($1::text[]))`, [ids]);
+  } else {
+    await query(`delete from ${table}`);
+  }
+
+  const saved = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const record = list[index] || {};
+    const recordId = ids[index];
+    const rows = await query(
+      `insert into ${table} (record_id, data, updated_at)
+       values ($1, $2::jsonb, now())
+       on conflict (record_id) do update set data = excluded.data, updated_at = now()
+       returning record_id, updated_at`,
+      [recordId, JSON.stringify(record)]
+    );
+    saved.push(rows[0]);
+  }
+  return saved;
+}
+
+async function saveObject(table, value) {
+  const rows = await query(
+    `insert into ${table} (record_id, data, updated_at)
+     values ('state', $1::jsonb, now())
+     on conflict (record_id) do update set data = excluded.data, updated_at = now()
+     returning record_id, updated_at`,
+    [JSON.stringify(value && typeof value === "object" ? value : {})]
+  );
+  return rows;
+}
 
 appStateRouter.use(requireAuth);
 
 appStateRouter.get("/", async (_req, res, next) => {
   try {
-    const rows = await query("select key, value, updated_at from app_state order by key");
-    res.json({ state: Object.fromEntries(rows.map((row) => [row.key, row.value])), updatedAt: Object.fromEntries(rows.map((row) => [row.key, row.updated_at])) });
+    const state = {};
+    let relationalCount = 0;
+    const legacy = await readLegacyAppState();
+
+    for (const [key, table] of Object.entries(collectionTables)) {
+      state[key] = await readCollection(table);
+      if (!state[key].length && Array.isArray(legacy.state[key])) {
+        state[key] = legacy.state[key];
+      }
+      relationalCount += state[key].length;
+    }
+    for (const [key, table] of Object.entries(objectTables)) {
+      const value = await readObject(table);
+      state[key] = value || legacy.state[key];
+      if (state[key]) relationalCount += 1;
+    }
+
+    if (!relationalCount) {
+      return res.json(legacy);
+    }
+
+    res.json({ state, storage: "module_tables" });
   } catch (error) {
     next(error);
   }
@@ -34,26 +119,21 @@ appStateRouter.get("/", async (_req, res, next) => {
 
 appStateRouter.put("/", async (req, res, next) => {
   try {
-    if (process.env.ALLOW_APP_STATE_WRITES !== "true") {
-      return res.status(410).json({
-        error: "app_state writes are disabled. Use /api/relational-state after migration."
-      });
-    }
     const entries = Object.entries(req.body?.state || {}).filter(([key]) => allowedKeys.has(key));
     if (!entries.length) return res.status(400).json({ error: "No valid app state keys supplied" });
 
     const saved = [];
     for (const [key, value] of entries) {
-      const rows = await query(
-        `insert into app_state (key, value, updated_at)
-         values ($1, $2::jsonb, now())
-         on conflict (key) do update set value = excluded.value, updated_at = now()
-         returning key, updated_at`,
-        [key, JSON.stringify(value ?? null)]
-      );
-      saved.push(rows[0]);
+      if (collectionTables[key]) {
+        const rows = await saveCollection(key, collectionTables[key], value);
+        saved.push({ key, table: collectionTables[key], count: rows.length });
+      }
+      if (objectTables[key]) {
+        await saveObject(objectTables[key], value);
+        saved.push({ key, table: objectTables[key], count: 1 });
+      }
     }
-    res.json({ ok: true, saved });
+    res.json({ ok: true, storage: "module_tables", saved });
   } catch (error) {
     next(error);
   }
