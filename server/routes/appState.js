@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
-import { requireAuth } from "../middleware/auth.js";\
+import { requireAuth } from "../middleware/auth.js";
 import { saveCollection } from "../db/saveCollection.js";
 
 export const appStateRouter = Router();
