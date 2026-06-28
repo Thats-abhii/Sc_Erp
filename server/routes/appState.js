@@ -113,41 +113,6 @@ async function saveLegacyAppState(key, value) {
   }
 }
 
-async function saveCollection(key, table, records) {
-  const list = Array.isArray(records) ? records : [];
-  const ids = list.map((record, index) => stableRecordId(key, record, index));
-
-  if (ids.length) {
-    await query(`delete from ${table} where not (record_id = any($1::text[]))`, [ids]);
-  } else {
-    await query(`delete from ${table}`);
-  }
-
-  const saved = [];
-  for (let index = 0; index < list.length; index += 1) {
-    const record = list[index] || {};
-    const recordId = ids[index];
-    const hasId = await tableHasColumn(table, "id");
-    const rows = hasId
-      ? await query(
-        `insert into ${table} (id, record_id, data, updated_at)
-         values ($1, $1, $2::jsonb, now())
-         on conflict (record_id) do update set data = excluded.data, updated_at = now()
-         returning record_id, updated_at`,
-        [recordId, JSON.stringify(record)]
-      )
-      : await query(
-        `insert into ${table} (record_id, data, updated_at)
-         values ($1, $2::jsonb, now())
-         on conflict (record_id) do update set data = excluded.data, updated_at = now()
-         returning record_id, updated_at`,
-        [recordId, JSON.stringify(record)]
-      );
-    saved.push(rows[0]);
-  }
-  return saved;
-}
-
 async function saveObject(table, value) {
   const rows = await query(
     `insert into ${table} (record_id, data, updated_at)
