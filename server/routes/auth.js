@@ -37,8 +37,13 @@ async function migrateLegacyAppUser({ userLogin, password, role }) {
   const key = role === "channel_partner" ? "channelPartners" : role === "salesman" ? "salesmen" : "";
   if (!key) return null;
 
-  const rows = await query("select value from app_state where key = $1 limit 1", [key]);
-  const records = Array.isArray(rows[0]?.value) ? rows[0].value : [];
+  const table = role === "channel_partner" ? "sc_channel_partners" : "sc_salesmen";
+  let rows = await query(`select data from ${table} order by updated_at asc`);
+  let records = rows.map((row) => row.data);
+  if (!records.length) {
+    rows = await query("select value from app_state where key = $1 limit 1", [key]);
+    records = Array.isArray(rows[0]?.value) ? rows[0].value : [];
+  }
   const legacy = records.find((record) =>
     String(record.loginId || "").trim().toLowerCase() === userLogin &&
     String(record.password || "") === String(password || "")
